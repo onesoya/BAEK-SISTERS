@@ -59,7 +59,7 @@
   .app-title-row{ display:flex; align-items:center; gap:6px; }
   .icon-btn{
     background:none; border:none; padding:0; cursor:pointer; flex-shrink:0;
-    width:40px; height:40px;
+    width:34px; height:34px;
     filter:drop-shadow(3px 3px 0 rgba(74,53,72,0.28));
     transition:transform 0.08s ease;
     display:flex; align-items:center; justify-content:center;
@@ -96,7 +96,7 @@
     background:var(--white);
     border:2px solid var(--plum);
     padding:0 14px;
-    height:40px;
+    height:34px;
     display:inline-flex;
     align-items:center;
     border-radius:10px;
@@ -111,7 +111,7 @@
   .identity-chip:active{ transform:translate(3px,3px); box-shadow:0 0 0 rgba(74,53,72,0.25); }
   .visit-counter-row{
     display:flex; align-items:center; gap:10px; margin-top:5px;
-    font-size:10.5px; color:var(--plum-soft); white-space:nowrap;
+    font-size:12.5px; color:var(--plum-soft); white-space:nowrap;
   }
 
   main{padding:16px 20px 20px;}
@@ -123,7 +123,7 @@
     display:flex; align-items:center; justify-content:space-between;
     padding-top:8px; margin-bottom:14px; gap:10px;
   }
-  .home-today{ text-align:left; font-size:16px; color:var(--plum-soft); }
+  .home-today{ text-align:left; font-size:16px; color:var(--plum-soft); line-height:1.5; }
   .home-anniv-row{ display:flex; align-items:center; gap:6px; }
   .anniv-add-btn{
     width:22px; height:22px; border-radius:50%; border:1.5px solid var(--plum-soft);
@@ -151,7 +151,7 @@
     margin-bottom: 15px; /* 마스코트 키에 맞춰 살짝 위로 */
     z-index:1;
   }
-  .home-anniv-mini{ text-align:right; font-size:16px; color:var(--plum-soft); white-space:nowrap; }
+  .home-anniv-mini{ text-align:right; font-size:16px; color:var(--plum-soft); line-height:1.5; }
   .home-anniv-mini b{ color:var(--pink); font-family:'DungGeunMo',sans-serif; font-size:17px; }
   .home-next-card{border:2.5px solid var(--plum);
     background:var(--white); border-radius:10px; padding:16px; margin-bottom:14px;
@@ -541,6 +541,10 @@
     border:1.5px solid #F0E4E9; background:#FDFBF9; color:var(--plum-soft); cursor:pointer;
   }
   .chip-toggle.active{ background:var(--pink); color:var(--white); border-color:var(--pink); }
+  .chip-toggle.active.color-yellow{ background:var(--yellow); color:var(--plum); border-color:var(--yellow); }
+  .chip-toggle.active.color-red{ background:var(--red); color:var(--white); border-color:var(--red); }
+  .chip-toggle.active.color-green{ background:var(--green); color:var(--white); border-color:var(--green); }
+  .chip-toggle.active.color-blue{ background:var(--blue); color:var(--white); border-color:var(--blue); }
 
   /* 홈 - 오늘의 상태보드 */
   .status-board{ display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:14px; margin-bottom:22px; }
@@ -759,6 +763,10 @@
 }
 .filter-chip:active{ transform:translate(2px,2px); box-shadow:0 0 0 rgba(74,53,72,0.25); }
 .filter-chip.active{ background:var(--pink); color:var(--white); }
+.filter-chip.active.color-yellow{ background:var(--yellow); color:var(--plum); border-color:var(--yellow); }
+.filter-chip.active.color-red{ background:var(--red); color:var(--white); border-color:var(--red); }
+.filter-chip.active.color-green{ background:var(--green); color:var(--white); border-color:var(--green); }
+.filter-chip.active.color-blue{ background:var(--blue); color:var(--white); border-color:var(--blue); }
 
 #letterFilterRow{ flex-wrap:nowrap; gap:6px; }
 #letterFilterRow .filter-chip{ flex:1; text-align:center; padding:6px 4px; }

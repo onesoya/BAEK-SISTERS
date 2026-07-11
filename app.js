@@ -1052,7 +1052,8 @@ function renderLetters() {
   function formatTodayKR(){
     const days = ['일','월','화','수','목','금','토'];
     const d = new Date();
-    return `${d.getFullYear()}년 ${d.getMonth()+1}월 ${d.getDate()}일 ${days[d.getDay()]}요일`;
+    const y = d.getFullYear(), m = String(d.getMonth()+1).padStart(2,'0'), day = String(d.getDate()).padStart(2,'0');
+    return `${y}-${m}-${day}<br>${days[d.getDay()]}요일`;
   }
   // 등록된 기념일(생일 등) 중 오늘부터 가장 가까운 것 찾기
   function nearestAnniversary(){
@@ -1141,7 +1142,7 @@ function renderLetters() {
   }
   function renderHomeImmediate(){
     const todayEl = document.getElementById('homeToday');
-    if(todayEl) todayEl.textContent = formatTodayKR();
+    if(todayEl) todayEl.innerHTML = formatTodayKR();
 
     const annivMini = document.getElementById('homeAnnivMini');
     if(annivMini){
@@ -1150,8 +1151,8 @@ function renderLetters() {
         annivMini.innerHTML = `등록된 기념일이 없어`;
       } else {
         annivMini.innerHTML = anv.diffDays === 0
-          ? `🎉 오늘은 <b>${escapeHTML(anv.title)}</b>야!`
-          : `${escapeHTML(anv.title)}까지 <b>D-${anv.diffDays}</b>`;
+          ? `🎉 오늘은<br><b>${escapeHTML(anv.title)}</b>이야!`
+          : `${escapeHTML(anv.title)}까지<br><b>D-${anv.diffDays}</b>`;
       }
     }
 
@@ -1629,7 +1630,7 @@ function renderLetters() {
   function renderParticipantChips(containerId, selectedArr){
     const row = document.getElementById(containerId);
     row.innerHTML = ALL_NAMES.map(name => `
-      <button type="button" class="chip-toggle ${selectedArr.includes(name)?'active':''}" data-chip-name="${name}">${name}</button>
+      <button type="button" class="chip-toggle color-${colorKeyOf(name)} ${selectedArr.includes(name)?'active':''}" data-chip-name="${name}">${name}</button>
     `).join('');
     row.querySelectorAll('.chip-toggle').forEach(btn=>{
       btn.addEventListener('click', ()=>{
