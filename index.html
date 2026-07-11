@@ -1,156 +1,361 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>백씨스터즈</title>
-<link rel="stylesheet" href="style.css" />
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" href="favicon-32.png" sizes="32x32">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="백씨스터즈">
+<link rel="stylesheet" href="style.css">
 </head>
 <body>
 
 <div class="app-shell">
-
   <header class="app-header">
-    <div class="app-title-row">
-      <div>
-        <div class="app-title">백씨스터즈</div>
-        <div id="homeAnnivPill" class="dday-pill">기념일 불러오는 중...</div>
+    <div>
+      <div class="app-title">💜백씨스터즈</div>
+    </div>
+    <div style="display:flex; align-items:center; gap:8px;">
+      <button class="icon-btn" id="searchOpenBtn" title="검색"><img src="search-icon.png" alt="검색"></button>
+      <div style="display:flex; flex-direction:column; align-items:flex-end; gap:3px;">
+        <button class="identity-chip" id="identityChip" title="탭하면 로그아웃">나는 ...</button>
+        <div class="visit-counter">
+          <div id="visitToday"></div>
+          <div id="visitTotal"></div>
+        </div>
       </div>
     </div>
-    <button id="identityChip" class="identity-chip">로그인</button>
   </header>
 
   <main>
 
-    <!-- 홈 -->
-    <section id="tab-home" class="tab-panel active">
+    <section class="tab-panel active" id="panel-home">
       <div class="home-today" id="homeToday"></div>
-
-      <div class="home-next-card" id="nextDateCard">
-        <div class="home-next-label">다음 데이트</div>
-        <div class="home-next-title" id="nextDateTitle">일정을 불러오는 중...</div>
-        <div class="home-next-sub" id="nextDateSub"></div>
-        <div class="participant-row" id="nextDateParticipants"></div>
-      </div>
-
+      <div class="home-anniv-mini" id="homeAnnivMini"></div>
+      <div class="home-next-card" id="homeNextDateCard"></div>
       <div class="status-board" id="statusBoard"></div>
+      <div class="home-feed-card" id="homeFeedCard"></div>
+      <div class="home-throwback-card hidden" id="homeThrowbackCard"></div>
     </section>
 
-    <!-- 일정 -->
-    <section id="tab-schedule" class="tab-panel">
-      <div class="section-title">일정</div>
+    <section class="tab-panel" id="panel-schedule">
+      <div class="section-title">일정 공유</div>
+      <div class="calendar-card" id="scheduleCalendar"></div>
       <div class="add-card">
-        <input type="text" id="scheduleTitleInput" placeholder="제목" />
-        <div class="add-row" style="margin-top:8px;">
-          <input type="date" id="scheduleDateInput" />
-          <input type="time" id="scheduleTimeInput" />
+        <div class="datetime-row">
+          <div class="field-group date-field">
+            <label class="field-label">📅 날짜</label>
+            <input type="date" id="schedDate">
+          </div>
+          <div class="field-group time-field">
+            <label class="field-label">🕐 시간</label>
+            <input type="time" id="schedTime">
+          </div>
         </div>
-        <label class="checkbox-row">
-          <input type="checkbox" id="scheduleIsDateInput" />
-          <span>💜 데이트 일정으로 등록 (홈 화면에 반영, 참여 기능 생김)</span>
-        </label>
-        <button class="btn btn-primary" id="scheduleAddBtn" style="margin-top:10px;">등록</button>
+        <div class="datetime-row hidden" id="schedEndDateRow">
+          <div class="field-group date-field">
+            <label class="field-label">📅 종료일</label>
+            <input type="date" id="schedEndDate">
+          </div>
+          <div class="field-group time-field">
+            <label class="field-label">🕐 종료시간</label>
+            <input type="time" id="schedEndTime">
+          </div>
+        </div>
+        <button type="button" class="link-toggle-btn" id="schedRangeToggleBtn">+ 종료일 추가 (선택)</button>
+        <div class="add-row">
+          <input type="text" id="schedTitle" placeholder="무슨 일정이야?">
+        </div>
+        <button type="button" class="date-plan-toggle" id="schedDatePlanToggle"><svg viewBox="0 0 7 6" width="16" height="14" shape-rendering="crispEdges" style="display:inline-block;vertical-align:middle;"><rect x="1" y="0" width="2" height="1" fill="#FF5C7A"/><rect x="4" y="0" width="2" height="1" fill="#FF5C7A"/><rect x="0" y="1" width="7" height="1" fill="#FF5C7A"/><rect x="0" y="2" width="7" height="1" fill="#FF5C7A"/><rect x="1" y="3" width="5" height="1" fill="#FF5C7A"/><rect x="2" y="4" width="3" height="1" fill="#FF5C7A"/><rect x="3" y="5" width="1" height="1" fill="#FF5C7A"/></svg> 데이트 일정으로 표시</button>
+        <div class="add-row">
+          <textarea id="schedMemo" placeholder="메모 (선택)"></textarea>
+        </div>
+        <div class="add-row">
+          <button class="btn" id="schedAddBtn" style="width:100%;">추가하기</button>
+        </div>
+        <button class="cancel-edit-btn hidden" id="schedCancelBtn">수정 취소</button>
       </div>
-      <div id="scheduleList"></div>
+      <div class="filter-notice hidden" id="scheduleFilterNotice">
+        <span></span>
+        <button id="clearCalFilterBtn">전체 보기</button>
+      </div>
+      <div class="list" id="scheduleList"></div>
+      <button class="toggle-past-btn hidden" id="togglePastBtn">지난 일정 보기</button>
+      <div class="list hidden" id="pastScheduleSection" style="margin-top:10px;"></div>
     </section>
 
-    <!-- 위시 -->
-    <section id="tab-wish" class="tab-panel">
-      <div class="section-title">위시</div>
+    <section class="tab-panel" id="panel-wish">
+      <div class="section-title">하고 싶은 일</div>
       <div class="add-card">
-        <input type="text" id="wishTitleInput" placeholder="하고 싶은 일" />
-        <textarea id="wishMemoInput" placeholder="메모 (선택)" rows="2" style="margin-top:8px;"></textarea>
-        <button class="btn btn-primary" id="wishAddBtn" style="margin-top:10px;">등록</button>
+        <div class="add-row">
+          <input type="text" id="wishTitle" placeholder="제목">
+        </div>
+        <div class="add-row">
+          <textarea id="wishBody" placeholder="어떤 걸 해보고 싶어? 자유롭게 적어봐" style="min-height:80px;"></textarea>
+        </div>
+        <div class="add-row">
+          <input type="url" id="wishLink" placeholder="링크 (선택)">
+        </div>
+        <div class="add-row">
+          <input type="file" accept="image/*" id="wishPhotoInput" class="hidden" multiple>
+          <button class="btn-photo" id="wishPhotoBtn">📷 사진 추가 (선택)</button>
+        </div>
+        <div class="photo-preview-grid hidden" id="wishPhotoPreviewWrap"></div>
+        <div class="add-row">
+          <button class="btn" id="wishAddBtn" style="width:100%;">게시하기</button>
+        </div>
+        <button class="cancel-edit-btn hidden" id="wishCancelBtn">수정 취소</button>
       </div>
       <div id="wishList"></div>
+      <button class="toggle-past-btn hidden" id="toggleDoneWishBtn">완료한 위시 보기</button>
+      <div class="hidden" id="doneWishSection" style="margin-top:10px;"></div>
     </section>
 
-    <!-- 데이트기록 -->
-    <section id="tab-datelog" class="tab-panel">
+    <section class="tab-panel" id="panel-datelog">
       <div class="section-title">데이트 기록</div>
+      <button type="button" class="link-toggle-btn" id="dateMapOpenBtn">🗺️ 우리가 간 곳 지도로 보기</button>
       <div class="add-card">
-        <input type="text" id="datelogTitleInput" placeholder="제목" />
-        <input type="date" id="datelogDateInput" style="margin-top:8px;" />
-        <textarea id="datelogBodyInput" placeholder="기록 내용" rows="3" style="margin-top:8px;"></textarea>
-        <div class="checkbox-group" id="datelogParticipantCheckboxes"></div>
-        <input type="file" id="datelogPhotoInput" accept="image/*" multiple style="margin-top:8px;" />
-        <button class="btn btn-primary" id="datelogAddBtn" style="margin-top:10px;">등록</button>
+        <div class="datetime-row">
+          <div class="field-group date-field">
+            <label class="field-label">📅 날짜</label>
+            <input type="date" id="dateLogDate">
+          </div>
+          <div class="field-group time-field">
+            <label class="field-label">🕐 시간</label>
+            <input type="time" id="dateLogTime">
+          </div>
+        </div>
+        <div class="datetime-row hidden" id="dateLogEndDateRow">
+          <div class="field-group date-field">
+            <label class="field-label">📅 종료일</label>
+            <input type="date" id="dateLogEndDate">
+          </div>
+          <div class="field-group time-field">
+            <label class="field-label">🕐 종료시간</label>
+            <input type="time" id="dateLogEndTime">
+          </div>
+        </div>
+        <button type="button" class="link-toggle-btn" id="dateLogRangeToggleBtn">+ 종료일 추가 (선택)</button>
+        <div class="add-row">
+          <input type="text" id="dateLogTitle" placeholder="제목">
+        </div>
+        <div class="add-row">
+          <input type="text" id="dateLogLocation" placeholder="📍 위치 검색 (선택)">
+          <button type="button" class="btn-photo" id="dateLogLocationSearchBtn" style="width:auto;flex-shrink:0;padding:9px 14px;">🔍 검색</button>
+        </div>
+        <div class="location-results hidden" id="dateLogLocationResults"></div>
+        <div class="field-label hidden" id="dateLogLocationStatus" style="margin:-4px 0 8px 2px;"></div>
+        <div class="field-label" style="margin:4px 0 6px 2px;">누가 참석했어?</div>
+        <div class="chip-toggle-row" id="dateLogParticipantRow"></div>
+        <div class="add-row">
+          <textarea id="dateLogMemo" placeholder="오늘 어땠어?"></textarea>
+        </div>
+        <div class="add-row">
+          <input type="file" accept="image/*" id="dateLogPhotoInput" class="hidden" multiple>
+          <button class="btn-photo" id="dateLogPhotoBtn">📷 사진 추가 (선택)</button>
+        </div>
+        <div class="photo-preview-grid hidden" id="dateLogPhotoPreviewWrap"></div>
+        <div class="add-row">
+          <button class="btn" id="dateLogAddBtn" style="width:100%;">기록하기</button>
+        </div>
+        <button class="cancel-edit-btn hidden" id="dateLogCancelBtn">수정 취소</button>
       </div>
-      <div id="datelogList"></div>
+      <div class="list" id="dateLogList"></div>
     </section>
 
-    <!-- 편지 -->
-    <section id="tab-letter" class="tab-panel">
+    <section class="tab-panel" id="panel-letter">
       <div class="section-title">편지</div>
       <div class="add-card">
-        <input type="text" id="letterTitleInput" placeholder="제목" />
-        <textarea id="letterBodyInput" placeholder="편지 내용" rows="4" style="margin-top:8px;"></textarea>
-        <label class="checkbox-row">
-          <input type="checkbox" id="letterAllRecipientsBox" />
-          <span>전체에게 보내기</span>
-        </label>
-        <div class="checkbox-group" id="letterRecipientCheckboxes"></div>
-        <label class="checkbox-row">
-          <input type="checkbox" id="letterLockToggle" />
-          <span>🔒 특정 날짜에 잠금 해제</span>
-        </label>
-        <input type="date" id="letterUnlockDateInput" class="hidden" style="margin-top:6px;" />
-        <button class="btn btn-primary" id="letterAddBtn" style="margin-top:10px;">보내기</button>
+        <div class="add-row">
+          <input type="text" id="letterTitle" placeholder="제목">
+        </div>
+        <div class="field-label" style="margin:4px 0 6px 2px;">누구에게 보낼까?</div>
+        <div class="chip-toggle-row" id="letterRecipientRow"></div>
+        <div class="add-row">
+          <textarea id="letterBody" placeholder="하고 싶은 말을 편지처럼 적어봐" style="min-height:120px;"></textarea>
+        </div>
+        <div class="add-row">
+          <input type="file" accept="image/*" id="letterPhotoInput" class="hidden" multiple>
+          <button class="btn-photo" id="letterPhotoBtn">📷 사진 추가 (선택)</button>
+        </div>
+        <div class="photo-preview-grid hidden" id="letterPhotoPreviewWrap"></div>
+        <button type="button" class="date-plan-toggle" id="letterLockToggle">🔒 특정 날짜에 잠금 해제</button>
+        <div class="add-row hidden" id="letterUnlockDateRow">
+          <input type="date" id="letterUnlockDate">
+        </div>
+        <div class="add-row">
+          <button class="btn" id="letterAddBtn" style="width:100%;">편지 보내기</button>
+        </div>
+        <button class="cancel-edit-btn hidden" id="letterCancelBtn">수정 취소</button>
       </div>
-      <div class="filter-chip-row" id="letterFilterRow"></div>
+      <div class="filter-chip-row" id="letterFilterRow">
+        <button class="filter-chip active" data-letter-filter="all">전체</button>
+        <button class="filter-chip" data-letter-filter="소정">To. 소정</button>
+        <button class="filter-chip" data-letter-filter="지수">To. 지수</button>
+        <button class="filter-chip" data-letter-filter="운빈">To. 운빈</button>
+        <button class="filter-chip" data-letter-filter="운경">To. 운경</button>
+      </div>
       <div id="letterList"></div>
     </section>
 
-    <!-- 자유게시판 -->
-    <section id="tab-board" class="tab-panel">
+    <section class="tab-panel" id="panel-board">
       <div class="section-title">자유게시판</div>
       <div class="add-card">
-        <input type="text" id="boardTitleInput" placeholder="제목" />
-        <textarea id="boardBodyInput" placeholder="내용" rows="3" style="margin-top:8px;"></textarea>
-        <input type="file" id="boardPhotoInput" accept="image/*" multiple style="margin-top:8px;" />
-        <button class="btn btn-primary" id="boardAddBtn" style="margin-top:10px;">등록</button>
+        <div class="add-row">
+          <input type="text" id="boardTitle" placeholder="제목">
+        </div>
+        <div class="add-row">
+          <textarea id="boardBody" placeholder="자유롭게 남겨봐" style="min-height:80px;"></textarea>
+        </div>
+        <div class="add-row">
+          <input type="file" accept="image/*" id="boardPhotoInput" class="hidden" multiple>
+          <button class="btn-photo" id="boardPhotoBtn">📷 사진 추가 (선택)</button>
+        </div>
+        <div class="photo-preview-grid hidden" id="boardPhotoPreviewWrap"></div>
+        <div class="add-row">
+          <button class="btn" id="boardAddBtn" style="width:100%;">게시하기</button>
+        </div>
+        <button class="cancel-edit-btn hidden" id="boardCancelBtn">수정 취소</button>
       </div>
       <div id="boardList"></div>
     </section>
-
   </main>
 
+  <div class="tabbar-backdrop"></div>
   <nav class="tabbar">
-    <button class="tab-btn active" data-tab="home">홈</button>
-    <button class="tab-btn" data-tab="schedule">일정</button>
-    <button class="tab-btn" data-tab="wish">위시</button>
-    <button class="tab-btn" data-tab="datelog">데이트</button>
-    <button class="tab-btn" data-tab="letter">편지</button>
-    <button class="tab-btn" data-tab="board">게시판</button>
+    <button class="tab-btn active" data-tab="home">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l9-8 9 8"/><path d="M5 10v10h14V10"/></svg>
+      홈
+    </button>
+    <button class="tab-btn" data-tab="schedule">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="5" width="18" height="16" rx="3"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>
+      일정
+    </button>
+    <button class="tab-btn" data-tab="wish">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 2l2.4 6.8L21 9.3l-5.4 4.6L17.3 21 12 17.2 6.7 21l1.7-7.1L3 9.3l6.6-0.5z"/></svg>
+      위시
+    </button>
+    <button class="tab-btn" data-tab="datelog">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 20s-7-4.5-9.5-9C1 7.5 2.5 4 6 4c2 0 3.5 1.2 4.5 2.8C11.5 5.2 13 4 15 4c3.5 0 5 3.5 3.5 7-2.5 4.5-9.5 9-9.5 9z"/></svg>
+      데이트
+    </button>
+    <button class="tab-btn" data-tab="letter">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/></svg>
+      편지
+    </button>
+    <button class="tab-btn" data-tab="board">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M7 9h10M7 13h10M7 17h6"/></svg>
+      게시판
+    </button>
   </nav>
 
-</div>
+  <div class="modal-overlay hidden" id="confirmModal">
+    <div class="modal-card">
+      <div class="modal-title">삭제할까?</div>
+      <div class="modal-sub" id="confirmMsg">이 내용을 정말 삭제할까?<br>되돌릴 수 없어.</div>
+      <div class="modal-btns">
+        <button class="btn" id="confirmCancelBtn" style="background:#F0E4E9;color:var(--plum);">취소</button>
+        <button class="btn" id="confirmDeleteBtn" style="background:#E5546F;">삭제하기</button>
+      </div>
+    </div>
+  </div>
 
-<!-- 참여 확인 모달 -->
-<div id="joinModal" class="modal-overlay hidden">
-  <div class="modal-card">
-    <div class="modal-title">참여할 수 있어? 앗싸뵤!</div>
-    <div class="modal-sub" id="joinModalSub"></div>
-    <div class="modal-btns">
-      <button class="btn btn-outline" id="joinNoBtn">아니</button>
-      <button class="btn btn-primary" id="joinYesBtn">응</button>
+  <div class="modal-overlay hidden" id="joinModal">
+    <div class="modal-card">
+      <div class="modal-title">참여할 수 있어? 앗싸뵤!</div>
+      <div class="modal-sub">참여 여부를 알려줘! 나중에 취소도 가능해.</div>
+      <div class="modal-btns">
+        <button class="btn" id="joinNoBtn" style="background:#F0E4E9;color:var(--plum);">아니</button>
+        <button class="btn" id="joinYesBtn">응</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay hidden" id="statusModal">
+    <div class="modal-card">
+      <div class="modal-title">오늘의 상태</div>
+      <div class="add-row">
+        <input type="text" id="statusEmojiInput" maxlength="4" placeholder="이모지 (선택)">
+      </div>
+      <div class="add-row">
+        <input type="text" id="statusTextInput" maxlength="30" placeholder="한 줄 상태 (예: 과제 중 건들지 마라)">
+      </div>
+      <div class="modal-btns">
+        <button class="btn" id="statusCancelBtn" style="background:#F0E4E9;color:var(--plum);">취소</button>
+        <button class="btn" id="statusSaveBtn">저장</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="notif-prompt hidden" id="notifPrompt">
+    <span>🔔 알림을 켜면 상대방이 뭔가 남길 때 바로 알 수 있어</span>
+    <button id="notifEnableBtn">켜기</button>
+    <button id="notifDismissBtn" class="notif-dismiss">✕</button>
+  </div>
+
+  <div class="push-toast hidden" id="pushToast">
+    <div class="push-toast-title" id="pushToastTitle"></div>
+    <div class="push-toast-body" id="pushToastBody"></div>
+  </div>
+
+  <div class="lightbox hidden" id="dateMapModal">
+    <button class="lightbox-close" id="dateMapClose">✕</button>
+    <div id="dateMapContainer" style="width:100%;height:100%;"></div>
+  </div>
+
+  <div class="search-overlay hidden" id="searchOverlay">
+    <div class="search-overlay-header">
+      <input type="text" id="searchInput" placeholder="추억이나 일정을 검색해봐...">
+      <button id="searchCloseBtn">✕</button>
+    </div>
+    <div class="search-category-row" id="searchCategoryRow">
+      <button class="search-cat-btn active" data-cat="all">전체</button>
+      <button class="search-cat-btn" data-cat="schedule">일정</button>
+      <button class="search-cat-btn" data-cat="wish">위시</button>
+      <button class="search-cat-btn" data-cat="datelog">데이트</button>
+      <button class="search-cat-btn" data-cat="letter">편지</button>
+      <button class="search-cat-btn" data-cat="board">게시판</button>
+    </div>
+    <div class="search-results" id="searchResults"></div>
+  </div>
+
+  <div class="loading-overlay hidden" id="loadingOverlay">
+    <div class="loading-spinner"></div>
+    <div class="loading-text">게시 중이야...<br>사진이 있으면 조금 걸릴 수 있어</div>
+  </div>
+
+  <div class="lightbox hidden" id="photoLightbox">
+    <button class="lightbox-close" id="lightboxClose">✕</button>
+    <div class="lightbox-counter hidden" id="lightboxCounter"></div>
+    <button class="lightbox-nav lightbox-prev hidden" id="lightboxPrev">‹</button>
+    <button class="lightbox-nav lightbox-next hidden" id="lightboxNext">›</button>
+    <div class="lightbox-stage" id="lightboxStage">
+      <img id="lightboxImg" draggable="false">
+    </div>
+  </div>
+
+  <div class="modal-overlay hidden" id="loginGate">
+    <div class="modal-card">
+      <div class="modal-title">💜</div>
+      <div class="modal-sub" id="loginGateMsg">백씨스터즈 멤버만 쓸 수 있는 앱이야.<br>구글 계정으로 로그인해줘.</div>
+      <div class="modal-btns">
+        <button class="btn" id="googleLoginBtn" style="width:100%;">Google로 로그인</button>
+      </div>
     </div>
   </div>
 </div>
 
-<!-- 상태 수정 모달 -->
-<div id="statusModal" class="modal-overlay hidden">
-  <div class="modal-card">
-    <div class="modal-title">오늘의 상태</div>
-    <input type="text" id="statusEmojiInput" maxlength="4" placeholder="이모지 (선택)" />
-    <input type="text" id="statusTextInput" maxlength="30" placeholder="한 줄 상태 (예: 과제 중 건들지 마라)" style="margin-top:8px;" />
-    <div class="modal-btns" style="margin-top:14px;">
-      <button class="btn btn-outline" id="statusCancelBtn">취소</button>
-      <button class="btn btn-primary" id="statusSaveBtn">저장</button>
-    </div>
-  </div>
-</div>
-
-<script type="module" src="app.js"></script>
+<script src="https://www.gstatic.com/firebasejs/12.15.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/12.15.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/12.15.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/12.15.0/firebase-messaging-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/12.15.0/firebase-functions-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/12.15.0/firebase-storage-compat.js"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="app.js"></script>
 </body>
 </html>

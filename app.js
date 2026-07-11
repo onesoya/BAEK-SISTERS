@@ -1,718 +1,2513 @@
-import { initializeApp } from "https://www.gstatic.com/firebasejs/12.16.0/firebase-app.js";
-import {
-  getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged
-} from "https://www.gstatic.com/firebasejs/12.16.0/firebase-auth.js";
-import {
-  getFirestore, doc, getDoc, setDoc, updateDoc, addDoc, deleteDoc, onSnapshot,
-  collection, query, where, orderBy, limit, getDocs, arrayUnion, arrayRemove, Timestamp
-} from "https://www.gstatic.com/firebasejs/12.16.0/firebase-firestore.js";
-import {
-  getStorage, ref, uploadBytes, getDownloadURL
-} from "https://www.gstatic.com/firebasejs/12.16.0/firebase-storage.js";
+(function(){
+  // iOS 사파리는 이게 없으면 버튼 :active(눌림) CSS가 탭 했을 때 거의 안 켜짐
+  document.addEventListener('touchstart', function(){}, {passive:true});
 
-const firebaseConfig = {
-  apiKey: "AIzaSyDitp8XR42laZMI3egD86NJPhQJyJggeh8",
-  authDomain: "baek-sisters.firebaseapp.com",
-  projectId: "baek-sisters",
-  storageBucket: "baek-sisters.firebasestorage.app",
-  messagingSenderId: "446206353039",
-  appId: "1:446206353039:web:d4e780fa2f8873dd2f5afa"
-};
+  const genId = () => Date.now().toString(36) + Math.random().toString(36).slice(2,7);
 
-const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
-const db = getFirestore(app);
+  const firebaseConfig = {
+    apiKey: "AIzaSyDitp8XR42laZMI3egD86NJPhQJyJggeh8",
+    authDomain: "baek-sisters.firebaseapp.com",
+    projectId: "baek-sisters",
+    storageBucket: "baek-sisters.firebasestorage.app",
+    messagingSenderId: "446206353039",
+    appId: "1:446206353039:web:d4e780fa2f8873dd2f5afa"
+  };
+  firebase.initializeApp(firebaseConfig);
+  const db = firebase.firestore();
+  const storage = firebase.storage();
 
-const ALLOWED_EMAILS = [
-  "sjsj980415@gmail.com",
-  "xkakak456456@gmail.com",
-  "qordnsqls@gmail.com",
-  "baekungyeong@gmail.com"
-];
-
-const NAME_BY_EMAIL = {
-  "sjsj980415@gmail.com": { name: "소정", colorKey: "yellow" },
-  "xkakak456456@gmail.com": { name: "지수", colorKey: "red" },
-  "qordnsqls@gmail.com": { name: "운빈", colorKey: "green" },
-  "baekungyeong@gmail.com": { name: "운경", colorKey: "blue" }
-};
-
-const STRONG_COLOR = { yellow: "#B8860B", red: "#C24040", green: "#3E8E52", blue: "#3B6EC2" };
-const SOFT_COLOR = { yellow: "#FFF6D8", red: "#FFE0E0", green: "#E1F3E4", blue: "#E1EBFB" };
-
-let currentUser = null; // { uid, name, colorKey, email }
-let allProfiles = []; // [{ uid, name, colorKey, email }, ...] - 로그인 이력 있는 사람만 채워짐
-
-// ---------- 탭 전환 ----------
-document.querySelectorAll(".tab-btn").forEach(btn => {
-  btn.addEventListener("click", () => {
-    document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
-    document.querySelectorAll(".tab-panel").forEach(p => p.classList.remove("active"));
-    btn.classList.add("active");
-    document.getElementById(`tab-${btn.dataset.tab}`).classList.add("active");
-  });
-});
-
-// ---------- 로그인 ----------
-const identityChip = document.getElementById("identityChip");
-identityChip.addEventListener("click", async () => {
-  if (currentUser) { await signOut(auth); return; }
-  const provider = new GoogleAuthProvider();
-  try { await signInWithPopup(auth, provider); }
-  catch (e) { console.error("로그인 실패", e); }
-});
-
-onAuthStateChanged(auth, async (user) => {
-  if (user && ALLOWED_EMAILS.includes(user.email)) {
-    const meta = NAME_BY_EMAIL[user.email];
-    currentUser = { uid: user.uid, name: meta.name, colorKey: meta.colorKey, email: user.email };
-    identityChip.textContent = `${meta.name} 🐾`;
-
-    const profileRef = doc(db, "profiles", user.uid);
-    const snap = await getDoc(profileRef);
-    if (!snap.exists()) {
-      await setDoc(profileRef, {
-        name: meta.name, email: user.email, colorKey: meta.colorKey,
-        status: { text: "", emoji: "", updatedAt: Timestamp.now() }
-      });
-    }
-
-    initApp();
-  } else if (user) {
-    alert("백씨스터즈 멤버 계정으로만 로그인할 수 있어");
-    await signOut(auth);
-  } else {
-    currentUser = null;
-    identityChip.textContent = "로그인";
-  }
-});
-
-// ---------- 공통 헬퍼 ----------
-function stripTime(d) { return new Date(d.getFullYear(), d.getMonth(), d.getDate()); }
-function diffDays(a, b) { return Math.round((b - a) / 86400000); }
-
-function escapeHtml(str) {
-  const div = document.createElement("div");
-  div.textContent = str || "";
-  return div.innerHTML;
-}
-
-function colorKeyByName(name) {
-  const entry = Object.values(NAME_BY_EMAIL).find(m => m.name === name);
-  return entry ? entry.colorKey : "";
-}
-
-function authorBadge(name, colorKey) {
-  const strong = STRONG_COLOR[colorKey] || "#8A8390";
-  const soft = SOFT_COLOR[colorKey] || "#F0EEF2";
-  return `<span style="font-family:'DungGeunMo',sans-serif;font-size:11.5px;padding:2px 8px;border-radius:8px;background:${soft};color:${strong};">${escapeHtml(name)}</span>`;
-}
-
-function formatTimeAgo(date) {
-  const mins = Math.floor((Date.now() - date.getTime()) / 60000);
-  if (mins < 1) return "방금 전";
-  if (mins < 60) return `${mins}분 전`;
-  const hours = Math.floor(mins / 60);
-  if (hours < 24) return `${hours}시간 전`;
-  return `${Math.floor(hours / 24)}일 전`;
-}
-
-async function loadAllProfiles() {
-  const snap = await getDocs(collection(db, "profiles"));
-  allProfiles = snap.docs.map(d => ({ uid: d.id, ...d.data() }));
-}
-
-function populateCheckboxGroup(container, cbClass) {
-  container.innerHTML = allProfiles.map(p => `
-    <label>
-      <input type="checkbox" value="${p.uid}" data-name="${p.name}" class="${cbClass}" />
-      ${escapeHtml(p.name)}
-    </label>
-  `).join("");
-}
-
-async function uploadPhotos(fileList, folder) {
-  if (!fileList || fileList.length === 0) return [];
-  const storage = getStorage(app);
-  const urls = [];
-  for (const file of fileList) {
-    const path = `${folder}/${Date.now()}_${file.name}`;
-    const sref = ref(storage, path);
-    await uploadBytes(sref, file);
-    urls.push(await getDownloadURL(sref));
-  }
-  return urls;
-}
-
-function renderPhotoGrid(photos) {
-  if (!photos || photos.length === 0) return "";
-  return `<div class="photo-grid">${photos.map(u => `<img src="${u}" />`).join("")}</div>`;
-}
-
-// ---------- 좋아요 / 댓글 공통 ----------
-async function toggleLike(collectionName, docId, currentLikes) {
-  if (!currentUser) return;
-  const ref_ = doc(db, collectionName, docId);
-  if (currentLikes.includes(currentUser.uid)) {
-    await updateDoc(ref_, { likes: arrayRemove(currentUser.uid) });
-  } else {
-    await updateDoc(ref_, { likes: arrayUnion(currentUser.uid) });
-  }
-}
-
-async function addComment(collectionName, docId, text) {
-  if (!currentUser || !text.trim()) return;
-  const ref_ = doc(db, collectionName, docId);
-  await updateDoc(ref_, {
-    comments: arrayUnion({ author: currentUser.name, authorUid: currentUser.uid, text: text.trim(), ts: Date.now() })
-  });
-}
-
-async function deleteComment(collectionName, docId, commentObj) {
-  const ref_ = doc(db, collectionName, docId);
-  await updateDoc(ref_, { comments: arrayRemove(commentObj) });
-}
-
-function reactionRowHTML(collectionName, id, likes, comments) {
-  const liked = currentUser && likes.includes(currentUser.uid);
-  const commentsHTML = comments.map(c => `
-    <div class="comment-item">
-      ${authorBadge(c.author, colorKeyByName(c.author))}
-      <span class="c-text">${escapeHtml(c.text)}</span>
-      ${currentUser && c.authorUid === currentUser.uid
-        ? `<button class="c-del" data-id="${id}" data-comment='${encodeURIComponent(JSON.stringify(c))}'>삭제</button>`
-        : ""}
-    </div>
-  `).join("");
-  return `
-    <div class="reaction-row">
-      <button class="like-btn ${liked ? "liked" : ""}" data-id="${id}" data-likes='${JSON.stringify(likes)}'>❤️ ${likes.length}</button>
-      <button class="comment-btn" data-id="${id}">💬 ${comments.length}</button>
-    </div>
-    <div class="comment-section" data-id="${id}">
-      <div class="comment-list">${commentsHTML}</div>
-      <div class="comment-input-row">
-        <input type="text" class="comment-input" data-id="${id}" placeholder="댓글 달기" />
-        <button class="comment-send" data-id="${id}">등록</button>
-      </div>
-    </div>
-  `;
-}
-
-// 좋아요/댓글/삭제 이벤트를 리스트 컨테이너 하나에 위임 (재렌더링해도 다시 붙일 필요 없음)
-function attachInteractionDelegation(container, collectionName) {
-  container.addEventListener("click", async (e) => {
-    const likeBtn = e.target.closest(".like-btn");
-    if (likeBtn) {
-      toggleLike(collectionName, likeBtn.dataset.id, JSON.parse(likeBtn.dataset.likes || "[]"));
-      return;
-    }
-    const commentBtn = e.target.closest(".comment-btn");
-    if (commentBtn) {
-      const section = container.querySelector(`.comment-section[data-id="${commentBtn.dataset.id}"]`);
-      if (section) section.classList.toggle("active");
-      return;
-    }
-    const delBtn = e.target.closest(".item-delete");
-    if (delBtn) {
-      if (confirm("삭제할까?")) await deleteDoc(doc(db, collectionName, delBtn.dataset.id));
-      return;
-    }
-    const cDelBtn = e.target.closest(".c-del");
-    if (cDelBtn) {
-      const commentObj = JSON.parse(decodeURIComponent(cDelBtn.dataset.comment));
-      await deleteComment(collectionName, cDelBtn.dataset.id, commentObj);
-      return;
-    }
-    const sendBtn = e.target.closest(".comment-send");
-    if (sendBtn) {
-      const id = sendBtn.dataset.id;
-      const input = container.querySelector(`.comment-input[data-id="${id}"]`);
-      if (input && input.value.trim()) {
-        await addComment(collectionName, id, input.value);
-        input.value = "";
+db.enablePersistence()
+    .catch((err) => {
+      if (err.code == 'failed-precondition') {
+        console.warn('여러 탭이 열려 있어 오프라인 모드를 켤 수 없어.');
+      } else if (err.code == 'unimplemented') {
+        console.warn('이 브라우저는 오프라인 모드를 지원하지 않아.');
       }
+    });
+  
+  let identity = null;
+  let schedule = [], wishes = [], dateLogs = [], letters = [], boards = [], anniversaries = [];
+  let profiles = {}; // { name: { colorKey, status:{text,emoji,updatedAt} } }
+  let pendingWishPhotos = [], pendingDateLogPhotos = [], pendingLetterPhotos = [], pendingBoardPhotos = [];
+  let pendingDateLogGeo = null;
+  let searchQuery = '';
+
+  // 4인 신원 체계
+  const PERSON_COLOR = { '소정':'yellow', '지수':'red', '운빈':'green', '운경':'blue' };
+  const ALL_NAMES = ['소정','지수','운빈','운경'];
+  function colorKeyOf(name){ return PERSON_COLOR[name] || 'yellow'; }
+  
+  async function searchLocations(query){
+    if(!query) return [];
+    try{
+      const callable = firebase.app().functions('asia-northeast3').httpsCallable('geocodePlace');
+      const result = await callable({ query });
+      return (result.data && result.data.results) || [];
+    }catch(e){ console.error('위치 검색 실패', e); return []; }
+  }
+
+function resizeImage(file){
+    return new Promise((resolve, reject)=>{
+      const reader = new FileReader();
+      reader.onload = (e)=>{
+        const img = new Image();
+        img.onload = ()=>{
+          let w = img.width, h = img.height;
+          const maxDim = 900;
+          if(w > maxDim || h > maxDim){
+            if(w > h){ h = Math.round(h * maxDim / w); w = maxDim; }
+            else { w = Math.round(w * maxDim / h); h = maxDim; }
+          }
+          const canvas = document.createElement('canvas');
+          canvas.width = w; canvas.height = h;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, w, h);
+          
+          // 파일 원본이 PNG인지 확인!
+          const isPng = file.type === 'image/png';
+          
+          // PNG면 투명도 유지를 위해 PNG로, 아니면 용량을 위해 JPEG로 설정
+          const outputType = isPng ? 'image/png' : 'image/jpeg';
+          const outputQuality = isPng ? undefined : 0.55; // PNG는 화질 옵션이 무시됨
+
+          canvas.toBlob((blob) => {
+            if(!blob) return reject('이미지 변환 실패');
+            resolve({
+              url: URL.createObjectURL(blob), // 화면 미리보기용 가짜 URL
+              blob: blob // Storage 업로드용 진짜 파일 데이터
+            });
+          }, outputType, outputQuality);
+        };
+        img.onerror = reject;
+        img.src = e.target.result;
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  }
+  
+  function revokePendingPhotoUrls(photosArray){
+    (photosArray || []).forEach(p => {
+      if(p && typeof p !== 'string' && p.url) URL.revokeObjectURL(p.url);
+    });
+  }
+
+  function renderPhotoPreviewGrid(wrapId, getPhotos, setPhotos){
+    const wrap = document.getElementById(wrapId);
+    const photos = getPhotos();
+    if(!photos || photos.length === 0){
+      wrap.innerHTML = '';
+      wrap.classList.add('hidden');
       return;
     }
-  });
-}
-
-// ---------- 참여 확인 모달 (홈 + 일정 탭 공용) ----------
-let pendingJoinScheduleId = null;
-
-function openJoinModal(scheduleId) {
-  pendingJoinScheduleId = scheduleId;
-  document.getElementById("joinModalSub").textContent = "참여 여부를 알려줘! 나중에 취소도 가능해.";
-  document.getElementById("joinModal").classList.remove("hidden");
-}
-
-document.getElementById("joinYesBtn").addEventListener("click", async () => {
-  if (!pendingJoinScheduleId || !currentUser) return;
-  const ref_ = doc(db, "schedule", pendingJoinScheduleId);
-  await updateDoc(ref_, {
-    participants: arrayUnion({ uid: currentUser.uid, name: currentUser.name, joinedAt: Timestamp.now() })
-  });
-  document.getElementById("joinModal").classList.add("hidden");
-  pendingJoinScheduleId = null;
-  loadNextDateEvent();
-});
-
-document.getElementById("joinNoBtn").addEventListener("click", () => {
-  document.getElementById("joinModal").classList.add("hidden");
-  pendingJoinScheduleId = null;
-});
-
-// ================= 홈 =================
-function renderToday() {
-  const now = new Date();
-  const days = ["일", "월", "화", "수", "목", "금", "토"];
-  document.getElementById("homeToday").textContent =
-    `${now.getMonth() + 1}월 ${now.getDate()}일 (${days[now.getDay()]})`;
-}
-
-async function loadNearestAnniversary() {
-  const pill = document.getElementById("homeAnnivPill");
-  const snap = await getDocs(collection(db, "anniversaries"));
-  const today = stripTime(new Date());
-
-  let nearest = null;
-  snap.forEach(docSnap => {
-    const d = docSnap.data();
-    const occurrence = nextOccurrence(d, today);
-    if (occurrence && (!nearest || occurrence.date < nearest.date)) {
-      nearest = { date: occurrence.date, dday: occurrence.dday, title: d.title };
-    }
-  });
-
-  if (!nearest) { pill.textContent = "등록된 기념일이 없어"; return; }
-  pill.innerHTML = nearest.dday === 0
-    ? `오늘! <b>${escapeHtml(nearest.title)}</b> 🎉`
-    : `<b>D-${nearest.dday}</b> ${escapeHtml(nearest.title)}`;
-}
-
-function nextOccurrence(annivData, today) {
-  const { month, day, recurring, year } = annivData;
-  if (recurring === false) {
-    if (!year) return null;
-    const d = stripTime(new Date(year, month - 1, day));
-    if (d < today) return null;
-    return { date: d, dday: diffDays(today, d) };
-  }
-  let candidate = stripTime(new Date(today.getFullYear(), month - 1, day));
-  if (candidate < today) candidate = stripTime(new Date(today.getFullYear() + 1, month - 1, day));
-  return { date: candidate, dday: diffDays(today, candidate) };
-}
-
-let activeScheduleId = null;
-
-async function loadNextDateEvent() {
-  const titleEl = document.getElementById("nextDateTitle");
-  const subEl = document.getElementById("nextDateSub");
-  const partEl = document.getElementById("nextDateParticipants");
-  const todayStr = new Date().toISOString().slice(0, 10);
-
-  const q = query(
-    collection(db, "schedule"),
-    where("isDateEvent", "==", true),
-    where("date", ">=", todayStr),
-    orderBy("date", "asc"),
-    limit(1)
-  );
-  const snap = await getDocs(q);
-
-  if (snap.empty) {
-    titleEl.textContent = "예정된 데이트가 없어";
-    subEl.textContent = "";
-    partEl.innerHTML = "";
-    activeScheduleId = null;
-    return;
-  }
-
-  const docSnap = snap.docs[0];
-  const d = docSnap.data();
-  activeScheduleId = docSnap.id;
-
-  const dday = diffDays(stripTime(new Date()), stripTime(new Date(d.date)));
-  titleEl.textContent = d.title;
-  subEl.textContent = dday === 0 ? `오늘! ${d.time || ""}` : `D-${dday} · ${d.date} ${d.time || ""}`;
-
-  partEl.innerHTML = (d.participants || []).map(p =>
-    `<span class="participant-chip ${colorKeyByName(p.name)}">${escapeHtml(p.name)}</span>`
-  ).join("");
-}
-
-document.getElementById("nextDateCard").addEventListener("click", () => {
-  if (!activeScheduleId || !currentUser) return;
-  openJoinModal(activeScheduleId);
-});
-
-function initStatusBoard() {
-  const board = document.getElementById("statusBoard");
-  onSnapshot(collection(db, "profiles"), (snap) => {
-    board.innerHTML = "";
-    snap.forEach(docSnap => {
-      const d = docSnap.data();
-      const card = document.createElement("div");
-      card.className = `status-card ${d.colorKey}`;
-      const timeAgo = d.status?.updatedAt ? formatTimeAgo(d.status.updatedAt.toDate()) : "";
-      card.innerHTML = `
-        <div class="s-name">${escapeHtml(d.name)}</div>
-        <div class="s-emoji">${d.status?.emoji || "🙂"}</div>
-        <div class="s-text">${escapeHtml(d.status?.text) || "상태 없음"}</div>
-        <div class="s-time">${timeAgo}</div>
-      `;
-      if (currentUser && docSnap.id === currentUser.uid) {
-        card.addEventListener("click", openStatusModal);
-      }
-      board.appendChild(card);
-    });
-  });
-}
-
-function openStatusModal() {
-  document.getElementById("statusEmojiInput").value = "";
-  document.getElementById("statusTextInput").value = "";
-  document.getElementById("statusModal").classList.remove("hidden");
-}
-
-document.getElementById("statusCancelBtn").addEventListener("click", () => {
-  document.getElementById("statusModal").classList.add("hidden");
-});
-
-document.getElementById("statusSaveBtn").addEventListener("click", async () => {
-  if (!currentUser) return;
-  const emoji = document.getElementById("statusEmojiInput").value.trim();
-  const text = document.getElementById("statusTextInput").value.trim();
-  await updateDoc(doc(db, "profiles", currentUser.uid), {
-    status: { emoji, text, updatedAt: Timestamp.now() }
-  });
-  document.getElementById("statusModal").classList.add("hidden");
-});
-
-function initHome() {
-  renderToday();
-  loadNearestAnniversary();
-  loadNextDateEvent();
-  initStatusBoard();
-}
-
-// ================= 일정 =================
-function initSchedule() {
-  const list = document.getElementById("scheduleList");
-  attachInteractionDelegation(list, "schedule");
-
-  document.getElementById("scheduleAddBtn").addEventListener("click", async () => {
-    const title = document.getElementById("scheduleTitleInput").value.trim();
-    const date = document.getElementById("scheduleDateInput").value;
-    const time = document.getElementById("scheduleTimeInput").value;
-    const isDateEvent = document.getElementById("scheduleIsDateInput").checked;
-    if (!title || !date || !currentUser) return;
-    await addDoc(collection(db, "schedule"), {
-      title, date, time, isDateEvent,
-      author: currentUser.name, authorUid: currentUser.uid,
-      participants: [], createdAt: Timestamp.now()
-    });
-    document.getElementById("scheduleTitleInput").value = "";
-    document.getElementById("scheduleDateInput").value = "";
-    document.getElementById("scheduleTimeInput").value = "";
-    document.getElementById("scheduleIsDateInput").checked = false;
-    loadNextDateEvent();
-  });
-
-  const q = query(collection(db, "schedule"), orderBy("date", "asc"));
-  onSnapshot(q, (snap) => {
-    list.innerHTML = "";
-    snap.forEach(docSnap => {
-      const d = docSnap.data();
-      const id = docSnap.id;
-      const joined = currentUser && (d.participants || []).some(p => p.uid === currentUser.uid);
-      const card = document.createElement("div");
-      card.className = "item-card";
-      card.innerHTML = `
-        ${d.authorUid === currentUser?.uid ? `<button class="item-delete" data-id="${id}">삭제</button>` : ""}
-        <div class="item-title">${d.isDateEvent ? "💜 " : ""}${escapeHtml(d.title)}</div>
-        <div class="item-meta">${authorBadge(d.author, colorKeyByName(d.author))}<span>${d.date} ${d.time || ""}</span></div>
-        <div class="participant-row">
-          ${(d.participants || []).map(p => `<span class="participant-chip ${colorKeyByName(p.name)}">${escapeHtml(p.name)}</span>`).join("")}
+    wrap.classList.remove('hidden');
+    wrap.innerHTML = photos.map((p,i)=>{
+      const src = typeof p === 'string' ? p : p.url; // 기존 사진은 string, 새 사진은 object
+      return `
+        <div class="photo-thumb">
+          <img src="${src}">
+          <button type="button" class="rm-photo-thumb" data-idx="${i}">✕</button>
         </div>
-        ${d.isDateEvent ? `<button class="btn ${joined ? "btn-outline" : "btn-primary"} join-toggle-btn" data-id="${id}" data-joined="${joined}" style="margin-top:10px;">${joined ? "참여 취소" : "참여할래"}</button>` : ""}
       `;
-      list.appendChild(card);
+    }).join('');
+    
+    wrap.querySelectorAll('.rm-photo-thumb').forEach(btn=>{
+      btn.addEventListener('click', ()=>{
+        const idx = Number(btn.dataset.idx);
+        const updated = getPhotos().slice();
+        const removed = updated.splice(idx, 1)[0];
+        
+        // 브라우저 메모리 누수 방지
+        if(typeof removed !== 'string' && removed.url) URL.revokeObjectURL(removed.url); 
+        
+        setPhotos(updated);
+        renderPhotoPreviewGrid(wrapId, getPhotos, setPhotos);
+      });
+    });
+  }
+
+async function uploadPhotos(photosArray, onProgress) {
+    const newPhotos = photosArray.filter(p => p && p.blob);
+    const totalBytes = newPhotos.reduce((sum, p) => sum + p.blob.size, 0);
+    const transferredMap = new Map();
+
+    function reportProgress(){
+      if(!onProgress || totalBytes === 0) return;
+      let transferred = 0;
+      transferredMap.forEach(v => transferred += v);
+      onProgress(Math.min(100, Math.round((transferred / totalBytes) * 100)));
+    }
+
+    const uploadPromises = photosArray.map(async (p) => {
+      if (typeof p === 'string') {
+        // 이미 저장되어 있던 기존 사진 (수정 모드일 때)
+        return p;
+      } else if (p && p.blob) {
+        // 새로 등록하는 사진 -> Storage 업로드
+        // 파일 타입이 image/png면 확장자를 png로, 아니면 jpg로 설정!
+        const ext = p.blob.type === 'image/png' ? 'png' : 'jpg';
+        const fileName = `images/${identity || 'user'}_${Date.now()}_${Math.random().toString(36).substr(2,5)}.${ext}`;
+
+        const ref = storage.ref().child(fileName);
+        const task = ref.put(p.blob);
+        task.on('state_changed', (snap)=>{
+          transferredMap.set(p, snap.bytesTransferred);
+          reportProgress();
+        });
+        await task;
+        transferredMap.set(p, p.blob.size);
+        reportProgress();
+        return await ref.getDownloadURL();
+      }
+      return null;
+    });
+    const results = await Promise.all(uploadPromises);
+    return results.filter(url => url !== null);
+  }
+  
+// Storage에서 실제 이미지 파일 삭제하는 함수
+  async function deletePhotosFromStorage(photosArray) {
+    if (!photosArray || photosArray.length === 0) return;
+    for (const url of photosArray) {
+      try {
+        // Firebase Storage URL인 경우에만 삭제 시도
+        if (typeof url === 'string' && url.includes('firebasestorage')) {
+          const ref = storage.refFromURL(url); // URL로 파일 위치 바로 찾기
+          await ref.delete(); // 실제 파일 삭제!
+        }
+      } catch (e) {
+        console.error('Storage 이미지 삭제 실패:', e);
+      }
+    }
+  }
+  
+  function setupPhotoPicker(inputId, btnId, wrapId, getPhotos, setPhotos){
+    const input = document.getElementById(inputId);
+    document.getElementById(btnId).addEventListener('click', ()=> input.click());
+    input.addEventListener('change', async ()=>{
+      if(!input.files || !input.files.length) return;
+      showLoadingOverlay('사진 처리 중이야...<br>잠시만 기다려줘');
+      try{
+        const files = Array.from(input.files);
+        const newPhotos = await Promise.all(files.map(f=>resizeImage(f)));
+        setPhotos(getPhotos().concat(newPhotos));
+        renderPhotoPreviewGrid(wrapId, getPhotos, setPhotos);
+      }catch(e){ console.error('사진 처리 실패', e); }
+      finally{ hideLoadingOverlay(); }
+      input.value = '';
+    });
+  }
+
+  function setupAutoGrow(textareaId, maxHeight){
+    const el = document.getElementById(textareaId);
+    if(!el) return;
+    const maxH = maxHeight || 240;
+    function resize(){
+      el.style.height = 'auto';
+      el.style.height = Math.min(el.scrollHeight, maxH) + 'px';
+    }
+    el.addEventListener('input', resize);
+    el._autoGrowResize = resize;
+    resize();
+  }
+
+  function localDateStr(d){
+    d = d || new Date();
+    const y = d.getFullYear(), m = String(d.getMonth()+1).padStart(2,'0'), day = String(d.getDate()).padStart(2,'0');
+    return `${y}-${m}-${day}`;
+  }
+  function fmtDate(d){
+    if(!d) return {day:'-', mon:''};
+    const dt = new Date(d + 'T00:00:00');
+    return { day: dt.getDate(), mon: (dt.getMonth()+1) + '월' };
+  }
+  function fmtShortDate(d){
+    if(!d) return '';
+    const dt = new Date(d + 'T00:00:00');
+    return `${dt.getMonth()+1}.${dt.getDate()}`;
+  }
+  function isPast(item){
+    const d = item && item.endDate ? item.endDate : (item && item.date);
+    if(!d) return false;
+    const today = new Date(); today.setHours(0,0,0,0);
+    return new Date(d + 'T00:00:00') < today;
+  }
+  function itemCoversDate(item, dateStr){
+    const end = item.endDate || item.date;
+    return dateStr >= item.date && dateStr <= end;
+  }
+  function formatTimeKR(t){
+    if(!t) return '';
+    const [h,m] = t.split(':').map(Number);
+    const period = h < 12 ? '오전' : '오후';
+    let h12 = h % 12; if(h12 === 0) h12 = 12;
+    return `${period} ${h12}:${String(m).padStart(2,'0')}`;
+  }
+  function formatScheduleRange(item){
+    const startLabel = fmtShortDate(item.date) + (item.time ? ` ${formatTimeKR(item.time)}` : '');
+    if(item.endDate && item.endDate !== item.date){
+      const endLabel = fmtShortDate(item.endDate) + (item.endTime ? ` ${formatTimeKR(item.endTime)}` : '');
+      return `${startLabel} ~ ${endLabel}`;
+    }
+    if(item.endTime && item.endTime !== item.time){
+      return `${startLabel} ~ ${formatTimeKR(item.endTime)}`;
+    }
+    return startLabel;
+  }
+  function formatDateTimeKR(ts){
+    const dt = new Date(ts);
+    const y = dt.getFullYear(), m = String(dt.getMonth()+1).padStart(2,'0'), d = String(dt.getDate()).padStart(2,'0');
+    let h = dt.getHours(); const mm = String(dt.getMinutes()).padStart(2,'0');
+    const period = h < 12 ? '오전' : '오후'; let h12 = h % 12; if(h12 === 0) h12 = 12;
+    return `${y}.${m}.${d} ${period} ${h12}:${mm}`;
+  }
+  function authorTagHTML(author){
+    if(!author || !PERSON_COLOR[author]) return '';
+    return `<span class="author-tag color-${colorKeyOf(author)}">${author}</span>`;
+  }
+  function escapeHTML(s){
+    return (s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+  function pixelHeartSVG(filled, size, colorOverride){
+    size = size || 15;
+    const c = colorOverride || (filled ? '#FF5C7A' : '#D8C7CE');
+    return `<svg viewBox="0 0 7 6" width="${size}" height="${size*6/7}" shape-rendering="crispEdges" style="display:inline-block;vertical-align:middle;"><rect x="1" y="0" width="2" height="1" fill="${c}"/><rect x="4" y="0" width="2" height="1" fill="${c}"/><rect x="0" y="1" width="7" height="1" fill="${c}"/><rect x="0" y="2" width="7" height="1" fill="${c}"/><rect x="1" y="3" width="5" height="1" fill="${c}"/><rect x="2" y="4" width="3" height="1" fill="${c}"/><rect x="3" y="5" width="1" height="1" fill="${c}"/></svg>`;
+  }
+  function pixelChatSVG(){
+    return `<svg viewBox="0 0 7 6" width="15" height="13" shape-rendering="crispEdges" style="display:inline-block;vertical-align:middle;"><rect x="1" y="0" width="5" height="1" fill="currentColor"/><rect x="0" y="1" width="1" height="1" fill="currentColor"/><rect x="6" y="1" width="1" height="1" fill="currentColor"/><rect x="0" y="2" width="1" height="1" fill="currentColor"/><rect x="2" y="2" width="1" height="1" fill="currentColor"/><rect x="4" y="2" width="1" height="1" fill="currentColor"/><rect x="6" y="2" width="1" height="1" fill="currentColor"/><rect x="0" y="3" width="1" height="1" fill="currentColor"/><rect x="6" y="3" width="1" height="1" fill="currentColor"/><rect x="1" y="4" width="5" height="1" fill="currentColor"/><rect x="2" y="5" width="1" height="1" fill="currentColor"/></svg>`;
+  }
+  function pixelEditSVG(){
+    return `<svg viewBox="0 0 7 7" width="15" height="15" shape-rendering="crispEdges" style="display:inline-block;vertical-align:middle;"><rect x="5" y="0" width="2" height="1" fill="#FFB3C6"/><rect x="4" y="1" width="2" height="1" fill="#4A3548"/><rect x="3" y="2" width="2" height="1" fill="#FFC94C"/><rect x="2" y="3" width="2" height="1" fill="#FFC94C"/><rect x="1" y="4" width="2" height="1" fill="#FFC94C"/><rect x="0" y="5" width="2" height="1" fill="#4A3548"/><rect x="0" y="6" width="1" height="1" fill="#4A3548"/></svg>`;
+  }
+  function linkHost(url){
+    try{ return new URL(url).hostname.replace('www.',''); }catch(e){ return url; }
+  }
+  function isMine(item){
+    if(item.author === undefined || item.author === null) return true;
+    return item.author === identity;
+  }
+  function getItemPhotos(item){
+    if(item.photos && item.photos.length) return item.photos;
+    if(item.photo) return [item.photo];
+    return [];
+  }
+  function cardPhotosHTML(item){
+    const photos = getItemPhotos(item);
+    if(photos.length === 0) return '';
+    return `<div class="card-photos">${photos.map(p=>`<img src="${p}" loading="lazy">`).join('')}</div>`;
+  }
+
+// 열려 있는 댓글창 ID를 기억하는 공간 (새로고침 시 닫힘 방지)
+  let openCommentSections = new Set();
+
+  // 댓글창 HTML을 그려주는 공통 함수
+  function renderCommentsHTML(item, colName) {
+    const comments = item.comments || [];
+    const isOpen = openCommentSections.has(`${colName}-${item.id}`);
+    
+    const commentListHTML = comments.map(c => `
+      <div class="comment-item">
+        <span class="c-author color-${colorKeyOf(c.author)}">${c.author}</span>
+        <span class="c-text">${escapeHTML(c.text)}</span>
+        ${c.author === identity ? `<button class="c-del" data-comment-col="${colName}" data-comment-id="${item.id}" data-comment-ts="${c.ts}">✕</button>` : ''}
+        <div class="c-time">${formatDateTimeKR(c.ts)}</div>
+      </div>
+    `).join('');
+
+    return `
+      <div class="comment-section ${isOpen ? 'active' : ''}" id="comments-${colName}-${item.id}">
+        <div class="comment-list">
+          ${comments.length > 0 ? commentListHTML : '<div style="font-size:11px; color:#8A7A86; text-align:center; padding: 4px 0;">첫 번째 댓글을 남겨봐! 🐶</div>'}
+        </div>
+        <div class="comment-input-row">
+          <input type="text" placeholder="댓글을 입력해 봐" id="c-input-${colName}-${item.id}" onkeypress="if(event.key==='Enter') document.getElementById('c-btn-${colName}-${item.id}').click();">
+          <button id="c-btn-${colName}-${item.id}" class="c-submit" data-comment-submit-col="${colName}" data-comment-submit-id="${item.id}">작성</button>
+        </div>
+      </div>
+    `;
+  }
+  
+  // ---- 연/월별 그룹 정리 (데이트기록/편지/스탬프 공용) ----
+  function renderGroupedByTime(containerId, items, getTs, cardRenderer, expandedSet, emptyHTML){
+    const container = document.getElementById(containerId);
+    if(items.length === 0){
+      container.innerHTML = emptyHTML;
+      return;
+    }
+    const now = new Date();
+    const curYear = now.getFullYear(), curMonth = now.getMonth();
+    const currentMonthItems = [];
+    const monthGroups = {};
+    const yearGroups = {};
+
+    items.forEach(item=>{
+      const d = new Date(getTs(item));
+      const y = d.getFullYear(), m = d.getMonth();
+      if(y === curYear){
+        if(m === curMonth) currentMonthItems.push(item);
+        else { (monthGroups[m] = monthGroups[m] || []).push(item); }
+      } else {
+        (yearGroups[y] = yearGroups[y] || []).push(item);
+      }
+    });
+
+    let html = currentMonthItems.map(cardRenderer).join('');
+
+    Object.keys(monthGroups).map(Number).sort((a,b)=>b-a).forEach(m=>{
+      const key = `month-${m}`;
+      const isOpen = expandedSet.has(key);
+      html += `<button class="group-toggle" data-group-key="${key}" data-container="${containerId}">${m+1}월 <span class="group-count">${monthGroups[m].length}개</span> ${isOpen?'▲':'▼'}</button>`;
+      html += `<div class="group-content ${isOpen?'':'hidden'}" data-group-content="${key}">${monthGroups[m].map(cardRenderer).join('')}</div>`;
+    });
+
+    Object.keys(yearGroups).map(Number).sort((a,b)=>b-a).forEach(y=>{
+      const key = `year-${y}`;
+      const isOpen = expandedSet.has(key);
+      html += `<button class="group-toggle" data-group-key="${key}" data-container="${containerId}">${y}년 <span class="group-count">${yearGroups[y].length}개</span> ${isOpen?'▲':'▼'}</button>`;
+      html += `<div class="group-content ${isOpen?'':'hidden'}" data-group-content="${key}">${yearGroups[y].map(cardRenderer).join('')}</div>`;
+    });
+
+    container.innerHTML = html;
+
+    container.querySelectorAll('[data-group-key]').forEach(btn=>{
+      btn.addEventListener('click', ()=>{
+        const key = btn.dataset.groupKey;
+        const content = container.querySelector(`[data-group-content="${key}"]`);
+        const isOpen = expandedSet.has(key);
+        if(isOpen){ expandedSet.delete(key); content.classList.add('hidden'); }
+        else { expandedSet.add(key); content.classList.remove('hidden'); }
+        btn.innerHTML = btn.innerHTML.replace(isOpen ? '▲' : '▼', isOpen ? '▼' : '▲');
+      });
+    });
+  }
+  let dateLogExpandedGroups = new Set();
+  let letterExpandedGroups = new Set();
+  let boardExpandedGroups = new Set();
+
+  // ---- 사진 확대뷰 (핀치줌 / 팬 / 스와이프 넘기기 / 더블탭) ----
+  (function(){
+    const lightbox = document.getElementById('photoLightbox');
+    const stage = document.getElementById('lightboxStage');
+    const img = document.getElementById('lightboxImg');
+    const closeBtn = document.getElementById('lightboxClose');
+    const prevBtn = document.getElementById('lightboxPrev');
+    const nextBtn = document.getElementById('lightboxNext');
+    const counter = document.getElementById('lightboxCounter');
+
+    let scale = 1, panX = 0, panY = 0;
+    let startScale = 1, startDist = 0;
+    let startTouchX = 0, startTouchY = 0;
+    let isPanning = false, isPinching = false;
+    let lastTapTime = 0;
+    let swipeStartX = 0, swipeStartY = 0, swipeActive = false;
+
+    let currentPhotos = [];
+    let currentIndex = 0;
+
+    function applyTransform(){
+      img.style.transform = `translate(${panX}px, ${panY}px) scale(${scale})`;
+    }
+    function resetTransform(){
+      scale = 1; panX = 0; panY = 0; applyTransform();
+    }
+    function updateNav(){
+      const multi = currentPhotos.length > 1;
+      prevBtn.classList.toggle('hidden', !multi || currentIndex === 0);
+      nextBtn.classList.toggle('hidden', !multi || currentIndex === currentPhotos.length - 1);
+      counter.classList.toggle('hidden', !multi);
+      if(multi) counter.textContent = `${currentIndex + 1} / ${currentPhotos.length}`;
+    }
+    function showCurrentPhoto(){
+      img.src = currentPhotos[currentIndex];
+      resetTransform();
+      updateNav();
+    }
+    function goNext(){
+      if(currentIndex < currentPhotos.length - 1){ currentIndex++; showCurrentPhoto(); }
+    }
+    function goPrev(){
+      if(currentIndex > 0){ currentIndex--; showCurrentPhoto(); }
+    }
+    function openLightbox(photos, index){
+      currentPhotos = photos;
+      currentIndex = index;
+      showCurrentPhoto();
+      lightbox.classList.remove('hidden');
+    }
+    function closeLightbox(){
+      lightbox.classList.add('hidden');
+      img.src = '';
+    }
+    closeBtn.addEventListener('click', closeLightbox);
+    prevBtn.addEventListener('click', goPrev);
+    nextBtn.addEventListener('click', goNext);
+    stage.addEventListener('click', (e)=>{
+      if(e.target === stage) closeLightbox();
+    });
+
+    function touchDist(touches){
+      const dx = touches[0].clientX - touches[1].clientX;
+      const dy = touches[0].clientY - touches[1].clientY;
+      return Math.sqrt(dx*dx + dy*dy);
+    }
+
+    stage.addEventListener('touchstart', (e)=>{
+      if(e.touches.length === 2){
+        isPinching = true; isPanning = false; swipeActive = false;
+        startDist = touchDist(e.touches);
+        startScale = scale;
+      } else if(e.touches.length === 1){
+        const now = Date.now();
+        if(now - lastTapTime < 300){
+          if(scale > 1){ resetTransform(); } else { scale = 2.5; applyTransform(); }
+          lastTapTime = 0;
+          swipeActive = false;
+          return;
+        }
+        lastTapTime = now;
+        isPinching = false;
+        if(scale > 1){
+          isPanning = true; swipeActive = false;
+          startTouchX = e.touches[0].clientX - panX;
+          startTouchY = e.touches[0].clientY - panY;
+        } else {
+          isPanning = false; swipeActive = true;
+          swipeStartX = e.touches[0].clientX;
+          swipeStartY = e.touches[0].clientY;
+        }
+      }
+    }, {passive:true});
+
+    stage.addEventListener('touchmove', (e)=>{
+      if(isPinching && e.touches.length === 2){
+        e.preventDefault();
+        const newDist = touchDist(e.touches);
+        scale = Math.min(4, Math.max(1, startScale * (newDist / startDist)));
+        applyTransform();
+      } else if(isPanning && e.touches.length === 1){
+        e.preventDefault();
+        panX = e.touches[0].clientX - startTouchX;
+        panY = e.touches[0].clientY - startTouchY;
+        applyTransform();
+      } else if(swipeActive && e.touches.length === 1){
+        e.preventDefault();
+      }
+    }, {passive:false});
+
+    stage.addEventListener('touchend', (e)=>{
+      if(e.touches.length === 0){
+        if(isPanning){
+          isPanning = false;
+          if(scale <= 1) resetTransform();
+        } else if(isPinching){
+          isPinching = false;
+          if(scale <= 1) resetTransform();
+        } else if(swipeActive){
+          const t = e.changedTouches[0];
+          const dx = t.clientX - swipeStartX;
+          const dy = t.clientY - swipeStartY;
+          if(Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy)){
+            if(dx < 0) goNext(); else goPrev();
+          }
+        }
+        swipeActive = false;
+      }
+    });
+
+    document.addEventListener('click', (e)=>{
+      const target = e.target.closest('.card-photos img');
+      if(target){
+        const container = target.closest('.card-photos');
+        const imgs = Array.from(container.querySelectorAll('img'));
+        openLightbox(imgs.map(i=>i.src), imgs.indexOf(target));
+      }
+    });
+  })();
+
+  // ---- 데이트기록 지도 ----
+  let dateLogMapInstance = null;
+  let dateLogMarkersLayer = null;
+  function heartMarkerIcon(){
+    return L.divIcon({
+      className: '',
+      html: `<div style="font-size:26px;line-height:1;filter:drop-shadow(0 2px 3px rgba(74,53,72,0.45));">❤️</div>`,
+      iconSize: [26, 26],
+      iconAnchor: [13, 24],
+      popupAnchor: [0, -22]
+    });
+  }
+  function openDateMap(){
+    document.getElementById('dateMapModal').classList.remove('hidden');
+    setTimeout(()=>{
+      if(!dateLogMapInstance){
+        dateLogMapInstance = L.map('dateMapContainer', { attributionControl: true });
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+          attribution: '&copy; OpenStreetMap &copy; CARTO',
+          maxZoom: 20,
+          subdomains: 'abcd'
+        }).addTo(dateLogMapInstance);
+      }
+      const pts = dateLogs.filter(d => typeof d.lat === 'number' && typeof d.lng === 'number');
+      if(dateLogMarkersLayer) dateLogMapInstance.removeLayer(dateLogMarkersLayer);
+      dateLogMarkersLayer = L.layerGroup();
+      pts.forEach(item=>{
+        const photo = getItemPhotos(item)[0];
+        const marker = L.marker([item.lat, item.lng], { icon: heartMarkerIcon() });
+        marker.bindPopup(
+          `<b>${escapeHTML(item.title)}</b><br><span style="color:#8A7A86;font-size:11px;">${fmtShortDate(item.date)} · ${item.author||''}</span>` +
+          (photo ? `<br><img src="${photo}" style="width:110px;border-radius:8px;margin-top:4px;">` : '')
+        );
+        marker.addTo(dateLogMarkersLayer);
+      });
+      dateLogMarkersLayer.addTo(dateLogMapInstance);
+      dateLogMapInstance.invalidateSize();
+      if(pts.length > 0){
+        const bounds = L.latLngBounds(pts.map(p=>[p.lat, p.lng]));
+        dateLogMapInstance.fitBounds(bounds, { padding:[40,40], maxZoom:15 });
+      } else {
+        dateLogMapInstance.setView([37.5665, 126.9780], 11);
+      }
+    }, 50);
+  }
+  document.getElementById('dateMapOpenBtn').addEventListener('click', openDateMap);
+  document.getElementById('dateMapClose').addEventListener('click', ()=>{
+    document.getElementById('dateMapModal').classList.add('hidden');
+  });
+
+
+  function scheduleCardHTML(item){
+    const d = fmtDate(item.date);
+    const extraLabel = formatScheduleRange(item);
+    const hasExtra = extraLabel !== fmtShortDate(item.date);
+    const participants = item.participants || [];
+    const joined = identity && participants.includes(identity);
+    return `<div class="item-card ${isPast(item)?'past':''}" data-item-id="${item.id}">
+      <div class="date-badge"><div class="day">${d.day}</div><div class="mon">${d.mon}</div></div>
+      <div class="item-body">
+        <div class="item-title">${escapeHTML(item.title)}${item.isDate ? ' ' + pixelHeartSVG(true, 16) : ''}</div>
+        ${hasExtra ? `<div class="item-memo">${extraLabel}</div>` : ''}
+        ${item.memo ? `<div class="item-memo">${escapeHTML(item.memo)}</div>` : ''}
+        <div class="item-meta">${authorTagHTML(item.author)}</div>
+        ${item.isDate ? `
+          <div class="home-next-participants">
+            ${participants.map(p => `<span class="recipient-chip color-${colorKeyOf(p)}">${p}</span>`).join('')}
+          </div>
+          ${!isPast(item) ? `<button type="button" class="date-plan-toggle ${joined?'active':''}" data-join-schedule="${item.id}" data-joined="${joined}" style="margin-top:8px;">${joined ? '참여 취소' : '참여할래'}</button>` : ''}
+        ` : ''}
+      </div>
+      ${isMine(item) ? `<button class="edit-btn" data-edit-schedule="${item.id}">${pixelEditSVG()}</button>
+      <button class="del-btn" data-del-schedule="${item.id}">✕</button>` : ''}
+    </div>`;
+  }
+  let showPastSchedule = false;
+  let calendarMonth = new Date();
+  let calendarFilterDate = null;
+
+function renderCalendar(){
+    const y = calendarMonth.getFullYear(), m = calendarMonth.getMonth();
+    const firstDay = new Date(y, m, 1);
+    const startWeekday = firstDay.getDay();
+    const daysInMonth = new Date(y, m+1, 0).getDate();
+    const todayStr = localDateStr();
+
+    // 이번 달 달력에 표시되는 날짜 범위 (1일 ~ 말일)
+    const startDateStr = `${y}-${String(m+1).padStart(2,'0')}-01`;
+    const endDateStr = `${y}-${String(m+1).padStart(2,'0')}-${String(daysInMonth).padStart(2,'0')}`;
+
+    // 화면에 그릴 일정만 필터링하고 정렬 (시작일이 빠른 순 -> 기간이 긴 순)
+    const monthEvents = schedule.filter(item => {
+      const itemStart = item.date;
+      const itemEnd = item.endDate || item.date;
+      return itemStart <= endDateStr && itemEnd >= startDateStr;
+    }).sort((a, b) => {
+      if (a.date !== b.date) return a.date.localeCompare(b.date);
+      const aEnd = a.endDate || a.date;
+      const bEnd = b.endDate || b.date;
+      return bEnd.localeCompare(aEnd); 
+    });
+
+    // 다일 일정이 단차 없이 한 줄로 이어지게 '슬롯(slot)'을 배정
+    const slotOccupied = {};
+    monthEvents.forEach(ev => {
+      const start = ev.date;
+      const end = ev.endDate || ev.date;
+      let slot = 0;
+      
+      while (true) { // 빈 층(슬롯) 찾기
+        let isFree = true;
+        let curr = new Date(start + 'T00:00:00');
+        const endDt = new Date(end + 'T00:00:00');
+        while (curr <= endDt) {
+          const dStr = localDateStr(curr);
+          if (slotOccupied[dStr] && slotOccupied[dStr][slot]) {
+            isFree = false;
+            break;
+          }
+          curr.setDate(curr.getDate() + 1);
+        }
+        if (isFree) break;
+        slot++;
+      }
+      
+      // 빈 슬롯에 해당 일정 점유시키기
+      let curr = new Date(start + 'T00:00:00');
+      const endDt = new Date(end + 'T00:00:00');
+      while (curr <= endDt) {
+        const dStr = localDateStr(curr);
+        if (!slotOccupied[dStr]) slotOccupied[dStr] = [];
+        slotOccupied[dStr][slot] = ev;
+        curr.setDate(curr.getDate() + 1);
+      }
+    });
+
+    let cells = '';
+    for(let i=0;i<startWeekday;i++) cells += `<div class="calendar-day empty"></div>`;
+    
+    // 1일부터 말일까지 달력 셀 그리기
+    for(let day=1; day<=daysInMonth; day++){
+      const dateStr = `${y}-${String(m+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+      const dayOfWeek = new Date(y, m, day - 1).getDay() + 1 === 7 ? 0 : new Date(y, m, day).getDay();
+      const classes = ['calendar-day'];
+      if(dateStr === todayStr) classes.push('today');
+      if(dateStr === calendarFilterDate) classes.push('selected');
+
+      let eventsHTML = '';
+      const slotsForDay = slotOccupied[dateStr] || [];
+      const MAX_SLOTS = 2; // 각 날짜 칸에 표시할 최대 일정 줄 수
+      
+      for (let i = 0; i < MAX_SLOTS; i++) {
+        const ev = slotsForDay[i];
+        if (ev) {
+          const personClass = ev.isDate ? 'date-plan-event' : `color-${colorKeyOf(ev.author)}`;
+          const isActualStart = ev.date === dateStr;
+          const evEnd = ev.endDate || ev.date;
+
+          // 이 날짜가 '띠'를 새로 그리기 시작하는 지점인지 판단:
+          // 실제 시작일이거나 / 이번 달 보기의 1일(지난달에서 이어짐)이거나 / 이번 주의 첫 날(일요일, 지난 주에서 이어짐)
+          const isMonthContinuation = dateStr === startDateStr && ev.date < startDateStr;
+          const isWeekContinuation = dayOfWeek === 0 && ev.date < dateStr;
+          const isSegmentStart = isActualStart || isMonthContinuation || isWeekContinuation;
+          // 글자는 실제 시작일 / 달이 바뀌며 이어질 때만 다시 써주고, 그냥 주만 넘어갈 땐 색만 이어감
+          const shouldShowLabel = isActualStart || isMonthContinuation;
+
+          if (isSegmentStart) {
+            // 이번 주(토요일까지) / 이번 달 말일까지 / 일정 종료일까지 중 가장 빨리 끝나는 지점까지 span 계산
+            const daysLeftInRow = 6 - dayOfWeek;
+            const daysLeftInMonth = daysInMonth - day;
+            let span = 1;
+            while (span <= daysLeftInRow && span <= daysLeftInMonth) {
+              const nextDateStr = `${y}-${String(m+1).padStart(2,'0')}-${String(day+span).padStart(2,'0')}`;
+              if (nextDateStr > evEnd) break;
+              span++;
+            }
+            const segEndDateStr = `${y}-${String(m+1).padStart(2,'0')}-${String(day+span-1).padStart(2,'0')}`;
+            const isSegEnd = evEnd <= segEndDateStr;
+
+            const shapeClass = [];
+            if (isActualStart) shapeClass.push('ev-start'); else shapeClass.push('ev-mid-left');
+            if (isSegEnd && evEnd === segEndDateStr) shapeClass.push('ev-end');
+
+            const label = shouldShowLabel ? `${ev.isDate ? pixelHeartSVG(true, 13, '#ffffff') + ' ' : ''}${escapeHTML(ev.title)}` : '';
+            // span이 1이어도 항상 너비를 명시해야 함 (안 그러면 절대위치 특성상 글자 길이만큼 밖으로 튀어나감)
+            const widthCss = `width:calc(${span * 100}% + ${Math.max(0, span - 1) * 3}px);`;
+
+            eventsHTML += `<div class="cal-slot-row"><div class="cal-event-pill ${personClass} ${shapeClass.join(' ')}" style="position:absolute;left:0;top:0;height:100%;${widthCss}">${label}</div></div>`;
+          } else {
+            // 띠가 이어지는 중간 날짜: 이미 시작점에서 그려진 띠가 이 칸까지 덮어주므로, 자리만 확보(투명)
+            eventsHTML += `<div class="cal-slot-row"></div>`;
+          }
+        } else {
+          // 일정이 없지만 위쪽 슬롯의 단차를 유지하기 위한 투명한 빈 공간
+          if (i < slotsForDay.length) { 
+            eventsHTML += `<div class="cal-slot-row"></div>`;
+          }
+        }
+      }
+      
+      // 가려진 일정 개수 (+N) 표시
+      let moreCount = 0;
+      for (let i = MAX_SLOTS; i < slotsForDay.length; i++) {
+        if (slotsForDay[i]) moreCount++;
+      }
+      if (moreCount > 0) eventsHTML += `<div class="cal-event-more">+${moreCount}</div>`;
+
+      cells += `<div class="${classes.join(' ')}" data-cal-date="${dateStr}">
+        <div class="cal-daynum">${day}</div>
+        <div class="cal-events">${eventsHTML}</div>
+      </div>`;
+    }
+
+    const cal = document.getElementById('scheduleCalendar');
+    cal.innerHTML = `
+      <div class="calendar-header">
+        <button class="calendar-nav-btn" id="calPrevBtn" type="button">‹</button>
+        <div class="calendar-month-label">${y}년 ${m+1}월</div>
+        <button class="calendar-nav-btn" id="calNextBtn" type="button">›</button>
+      </div>
+      <div class="calendar-grid">
+        <div class="calendar-weekday">일</div><div class="calendar-weekday">월</div><div class="calendar-weekday">화</div>
+        <div class="calendar-weekday">수</div><div class="calendar-weekday">목</div><div class="calendar-weekday">금</div>
+        <div class="calendar-weekday">토</div>
+        ${cells}
+      </div>`;
+      
+    document.getElementById('calPrevBtn').addEventListener('click', ()=>{ calendarMonth = new Date(y, m-1, 1); renderCalendar(); });
+    document.getElementById('calNextBtn').addEventListener('click', ()=>{ calendarMonth = new Date(y, m+1, 1); renderCalendar(); });
+    cal.querySelectorAll('[data-cal-date]').forEach(cell=>{
+      cell.addEventListener('click', ()=>{
+        const d = cell.dataset.calDate;
+        calendarFilterDate = (calendarFilterDate === d) ? null : d;
+        renderCalendar();
+        renderSchedule();
+      });
+    });
+  }
+
+  function renderSchedule(){
+    const list = document.getElementById('scheduleList');
+    const toggleBtn = document.getElementById('togglePastBtn');
+    const pastSection = document.getElementById('pastScheduleSection');
+    const filterNotice = document.getElementById('scheduleFilterNotice');
+
+    if(calendarFilterDate){
+      const filtered = schedule.filter(item => itemCoversDate(item, calendarFilterDate));
+      filterNotice.classList.remove('hidden');
+      filterNotice.querySelector('span').textContent = `${fmtShortDate(calendarFilterDate)} 일정만 보는 중`;
+      list.innerHTML = filtered.length
+        ? filtered.map(scheduleCardHTML).join('')
+        : '<div class="empty-state">이 날짜엔 일정이 없어.</div>';
+      toggleBtn.classList.add('hidden');
+      pastSection.classList.add('hidden');
+      return;
+    }
+    filterNotice.classList.add('hidden');
+
+    if(schedule.length === 0){
+      list.innerHTML = '<div class="empty-state"><span class="empty-emoji">🗓️</span>아직 등록된 일정이 없어.<br>첫 일정을 추가해볼까?</div>';
+      toggleBtn.classList.add('hidden');
+      pastSection.classList.add('hidden');
+      return;
+    }
+
+    const upcoming = schedule.filter(item => !isPast(item));
+    const past = [...schedule.filter(item => isPast(item))].reverse();
+
+    list.innerHTML = upcoming.length === 0
+      ? '<div class="empty-state"><span class="empty-emoji">✅</span>다가오는 일정이 없어.</div>'
+      : upcoming.map(scheduleCardHTML).join('');
+
+    if(past.length > 0){
+      toggleBtn.classList.remove('hidden');
+      toggleBtn.textContent = showPastSchedule ? '지난 일정 숨기기' : `지난 일정 ${past.length}개 보기`;
+      pastSection.classList.toggle('hidden', !showPastSchedule);
+      pastSection.innerHTML = past.map(scheduleCardHTML).join('');
+    } else {
+      toggleBtn.classList.add('hidden');
+      pastSection.classList.add('hidden');
+    }
+  }
+
+
+  function wishCardHTML(item){
+    const dt = new Date(item.createdAt || Date.now());
+    const dateStr = `${dt.getFullYear()}.${String(dt.getMonth()+1).padStart(2,'0')}.${String(dt.getDate()).padStart(2,'0')}`;
+    const likes = item.likes || [];
+    const isLiked = identity && likes.includes(identity);
+    const likeIcon = pixelHeartSVG(isLiked);
+    const commentCount = (item.comments || []).length;
+    return `<div class="wish-card ${item.done?'wish-done':''}" data-item-id="${item.id}">
+      <div class="wish-content">
+        <div class="post-summary" data-post-toggle="${item.id}">
+          <div class="post-summary-title">${escapeHTML(item.title)}</div>
+          <div class="post-summary-meta">${authorTagHTML(item.author)}<span>${dateStr}</span><span class="post-summary-arrow">▾</span></div>
+        </div>
+        <div class="post-detail hidden">
+          ${item.body ? `<div class="wish-body">${escapeHTML(item.body)}</div>` : ''}
+          ${cardPhotosHTML(item)}
+          ${item.link ? `<a class="wish-link" href="${escapeHTML(item.link)}" target="_blank" rel="noopener">🔗 ${escapeHTML(linkHost(item.link))}</a>` : ''}
+          <div class="wish-footer">
+            <div style="display:flex;align-items:center;gap:6px;justify-content:flex-end;width:100%;">
+              <button class="wish-check ${item.done?'checked':''}" data-check-wish="${item.id}">${item.done ? '✓ 완료함' : '완료로 표시'}</button>
+              ${isMine(item) ? `<button class="edit-btn" data-edit-wish="${item.id}">${pixelEditSVG()}</button>
+              <button class="del-btn" data-del-wish="${item.id}">✕</button>` : ''}
+            </div>
+          </div>
+          <div class="reaction-row">
+            <div style="display:flex; gap:10px;">
+              <button class="like-btn ${isLiked ? 'liked' : ''}" data-like-col="wishlist" data-like-id="${item.id}">
+                <span class="heart-icon">${likeIcon}</span> ${likes.length > 0 ? likes.length : ''}
+              </button>
+              <button class="comment-btn" data-toggle-comment="wishlist" data-toggle-id="${item.id}">
+                <span class="chat-icon">${pixelChatSVG()}</span> ${commentCount > 0 ? commentCount : ''}
+              </button>
+            </div>
+          </div>
+          ${renderCommentsHTML(item, 'wishlist')}
+        </div>
+      </div>
+    </div>`;
+  }
+  function renderWish(){
+    const list = document.getElementById('wishList');
+    const toggleBtn = document.getElementById('toggleDoneWishBtn');
+    const doneSection = document.getElementById('doneWishSection');
+
+    if(wishes.length === 0){
+      list.innerHTML = '<div class="empty-state"><span class="empty-emoji">💭</span>아직 하고 싶은 일이 없어.<br>버킷리스트를 적어볼까?</div>';
+      toggleBtn.classList.add('hidden');
+      doneSection.classList.add('hidden');
+      return;
+    }
+    const active = wishes.filter(w=>!w.done);
+    const done = wishes.filter(w=>w.done);
+
+    list.innerHTML = active.length === 0
+      ? '<div class="empty-state"><span class="empty-emoji">🎉</span>다 완료했어! 새로운 위시를 적어볼까?</div>'
+      : active.map(wishCardHTML).join('');
+
+    if(done.length > 0){
+      toggleBtn.classList.remove('hidden');
+      toggleBtn.textContent = showDoneWishes ? '완료한 위시 숨기기' : `완료한 위시 ${done.length}개 보기`;
+      doneSection.classList.toggle('hidden', !showDoneWishes);
+      doneSection.innerHTML = done.map(wishCardHTML).join('');
+    } else {
+      toggleBtn.classList.add('hidden');
+      doneSection.classList.add('hidden');
+    }
+  }
+
+// 1. 데이트 기록
+  function dateLogCardHTML(item){
+    const d = fmtDate(item.date);
+    const extraLabel = formatScheduleRange(item);
+    const hasExtra = extraLabel !== fmtShortDate(item.date);
+    
+    const likes = item.likes || [];
+    const isLiked = likes.includes(identity);
+    const likeIcon = pixelHeartSVG(isLiked);
+    const commentCount = (item.comments || []).length;
+
+    return `<div class="item-card" data-item-id="${item.id}">
+      <div class="date-badge" style="background:var(--yellow-soft);"><div class="day">${d.day}</div><div class="mon">${d.mon}</div></div>
+      <div class="item-body">
+        <div class="post-summary" data-post-toggle="${item.id}">
+          <div class="post-summary-title">${escapeHTML(item.title)}</div>
+          <div class="post-summary-meta">${authorTagHTML(item.author)}<span>${(item.endDate && item.endDate !== item.date) ? `${fmtShortDate(item.date)}~${fmtShortDate(item.endDate)}` : fmtShortDate(item.date)} 데이트</span><span class="post-summary-arrow">▾</span></div>
+          <div class="post-summary-sub">올린 날짜 · ${item.createdAt ? formatDateTimeKR(item.createdAt) : '-'}</div>
+        </div>
+        <div class="post-detail hidden">
+          ${item.location ? `<div class="item-location">📍 ${escapeHTML(item.location)}</div>` : ''}
+          ${hasExtra ? `<div class="item-memo">${extraLabel}</div>` : ''}
+          ${(item.participants && item.participants.length) ? `<div class="letter-recipients" style="margin-top:6px;">${item.participants.map(p=>`<span class="recipient-chip color-${colorKeyOf(p)}">${p}</span>`).join('')}</div>` : ''}
+          ${item.memo ? `<div class="item-memo">${escapeHTML(item.memo)}</div>` : ''}
+          ${cardPhotosHTML(item)}
+
+          <div class="reaction-row">
+            <div style="display:flex; gap:10px;">
+              <button class="like-btn ${isLiked ? 'liked' : ''}" data-like-col="datelog" data-like-id="${item.id}">
+                <span class="heart-icon">${likeIcon}</span> ${likes.length > 0 ? likes.length : ''}
+              </button>
+              <button class="comment-btn" data-toggle-comment="datelog" data-toggle-id="${item.id}">
+                <span class="chat-icon">${pixelChatSVG()}</span> ${commentCount > 0 ? commentCount : ''}
+              </button>
+            </div>
+            <div class="reaction-row-right">
+              ${isMine(item) ? `<button class="edit-btn" data-edit-datelog="${item.id}">${pixelEditSVG()}</button>
+              <button class="del-btn" data-del-datelog="${item.id}">✕</button>` : ''}
+            </div>
+          </div>
+          ${renderCommentsHTML(item, 'datelog')}
+        </div>
+      </div>
+    </div>`;
+  }
+function renderDateLog() {
+  renderGroupedByTime(
+    'dateLogList',
+    dateLogs,
+    item => item.date + 'T00:00:00',
+    dateLogCardHTML,
+    dateLogExpandedGroups,
+    '<div class="empty-state"><span class="empty-emoji">💛</span>우리의 첫 데이트를<br>기록해봐.</div>'
+  );
+}
+
+// 2. 자유게시판
+  function boardCardHTML(item){
+    const dt = new Date(item.createdAt || Date.now());
+    const dateStr = `${dt.getFullYear()}.${String(dt.getMonth()+1).padStart(2,'0')}.${String(dt.getDate()).padStart(2,'0')}`;
+    const likes = item.likes || [];
+    const isLiked = identity && likes.includes(identity);
+    const likeIcon = pixelHeartSVG(isLiked);
+    const commentCount = (item.comments || []).length;
+    return `<div class="wish-card" data-item-id="${item.id}">
+      <div class="wish-content">
+        <div class="post-summary" data-post-toggle="${item.id}">
+          <div class="post-summary-title">${escapeHTML(item.title)}</div>
+          <div class="post-summary-meta">${authorTagHTML(item.author)}<span>${dateStr}</span><span class="post-summary-arrow">▾</span></div>
+        </div>
+        <div class="post-detail hidden">
+          ${item.body ? `<div class="wish-body">${escapeHTML(item.body)}</div>` : ''}
+          ${cardPhotosHTML(item)}
+          <div class="wish-footer">
+            <div style="display:flex;align-items:center;gap:6px;justify-content:flex-end;width:100%;">
+              ${isMine(item) ? `<button class="edit-btn" data-edit-board="${item.id}">${pixelEditSVG()}</button>
+              <button class="del-btn" data-del-board="${item.id}">✕</button>` : ''}
+            </div>
+          </div>
+          <div class="reaction-row">
+            <div style="display:flex; gap:10px;">
+              <button class="like-btn ${isLiked ? 'liked' : ''}" data-like-col="board" data-like-id="${item.id}">
+                <span class="heart-icon">${likeIcon}</span> ${likes.length > 0 ? likes.length : ''}
+              </button>
+              <button class="comment-btn" data-toggle-comment="board" data-toggle-id="${item.id}">
+                <span class="chat-icon">${pixelChatSVG()}</span> ${commentCount > 0 ? commentCount : ''}
+              </button>
+            </div>
+          </div>
+          ${renderCommentsHTML(item, 'board')}
+        </div>
+      </div>
+    </div>`;
+  }
+function renderBoard() {
+  renderGroupedByTime(
+    'boardList',
+    boards,
+    item => item.createdAt || Date.now(),
+    boardCardHTML,
+    boardExpandedGroups,
+    '<div class="empty-state"><span class="empty-emoji">📋</span>아직 게시글이 없어.<br>자유롭게 남겨봐!</div>'
+  );
+}
+
+// 3. 편지
+  function letterCardHTML(item){
+    const dateStr = formatDateTimeKR(item.createdAt || Date.now());
+    const recipients = item.recipients || [];
+    const isLocked = item.unlockAt && item.unlockAt > Date.now() && !isMine(item);
+    const likes = item.likes || [];
+    const isLiked = identity && likes.includes(identity);
+    const likeIcon = pixelHeartSVG(isLiked);
+    const commentCount = (item.comments || []).length;
+
+    return `<div class="wish-card" data-item-id="${item.id}">
+      <div class="wish-content">
+        <div class="post-summary" data-post-toggle="${item.id}">
+          <div class="post-summary-title">${isLocked ? '🔒 ' : ''}${escapeHTML(item.title)}</div>
+          <div class="post-summary-meta"><span class="letter-from color-${colorKeyOf(item.author)}">From. ${item.author||''}</span><span>${dateStr}</span><span class="post-summary-arrow">▾</span></div>
+        </div>
+        <div class="post-detail hidden">
+          <div class="letter-recipients">${recipients.map(r=>`<span class="recipient-chip color-${colorKeyOf(r)}">💌 To. ${r}</span>`).join('')}</div>
+          ${isLocked
+            ? `<div class="lock-badge">🔒 ${fmtShortDate(new Date(item.unlockAt).toISOString().slice(0,10))}에 열려</div>`
+            : `<div class="wish-body">${escapeHTML(item.body)}</div>${cardPhotosHTML(item)}`
+          }
+          <div class="wish-footer">
+            <div style="display:flex; align-items:center; gap:8px; justify-content:flex-end; width:100%;">
+              ${isMine(item) ? `<button class="edit-btn" data-edit-letter="${item.id}">${pixelEditSVG()}</button><button class="del-btn" data-del-letter="${item.id}">✕</button>` : ''}
+            </div>
+          </div>
+          ${!isLocked ? `
+          <div class="reaction-row">
+            <div style="display:flex; gap:10px;">
+              <button class="like-btn ${isLiked ? 'liked' : ''}" data-like-col="letters" data-like-id="${item.id}">
+                <span class="heart-icon">${likeIcon}</span> ${likes.length > 0 ? likes.length : ''}
+              </button>
+              <button class="comment-btn" data-toggle-comment="letters" data-toggle-id="${item.id}">
+                <span class="chat-icon">${pixelChatSVG()}</span> ${commentCount > 0 ? commentCount : ''}
+              </button>
+            </div>
+          </div>
+          ${renderCommentsHTML(item, 'letters')}
+          ` : ''}
+        </div>
+      </div>
+    </div>`;
+  }
+let letterFilterTarget = 'all';
+function renderLetters() {
+  const filteredLetters = letterFilterTarget === 'all' ? letters : letters.filter(item => (item.recipients||[]).includes(letterFilterTarget));
+  renderGroupedByTime(
+    'letterList',
+    filteredLetters,
+    item => item.createdAt || Date.now(),
+    letterCardHTML,
+    letterExpandedGroups,
+    letterFilterTarget === 'all'
+      ? '<div class="empty-state"><span class="empty-emoji">💌</span>아직 편지가 없어.<br>짧은 편지 한 통 써볼까?</div>'
+      : '<div class="empty-state"><span class="empty-emoji">💌</span>해당하는 편지가 없어.</div>'
+  );
+}
+
+  function findNextSchedule(){
+    const upcoming = schedule.filter(item => !isPast(item)).sort((a,b)=> a.date.localeCompare(b.date));
+    return upcoming[0] || null;
+  }
+  function findNextDatePlan(){
+    const upcoming = schedule.filter(item => item.isDate && !isPast(item)).sort((a,b)=> a.date.localeCompare(b.date));
+    return upcoming[0] || null;
+  }
+  function formatTodayKR(){
+    const days = ['일','월','화','수','목','금','토'];
+    const d = new Date();
+    return `${d.getFullYear()}년 ${d.getMonth()+1}월 ${d.getDate()}일 ${days[d.getDay()]}요일`;
+  }
+  // 등록된 기념일(생일 등) 중 오늘부터 가장 가까운 것 찾기
+  function nearestAnniversary(){
+    const today = new Date(); today.setHours(0,0,0,0);
+    let nearest = null;
+    anniversaries.forEach(a=>{
+      let candidate;
+      if(a.recurring === false){
+        if(!a.year) return;
+        candidate = new Date(a.year, a.month - 1, a.day);
+        if(candidate < today) return; // 지난 1회성 이벤트는 제외
+      } else {
+        candidate = new Date(today.getFullYear(), a.month - 1, a.day);
+        if(candidate < today) candidate = new Date(today.getFullYear() + 1, a.month - 1, a.day);
+      }
+      const diffDays = Math.round((candidate - today) / 86400000);
+      if(!nearest || diffDays < nearest.diffDays){
+        nearest = { title: a.title, diffDays };
+      }
+    });
+    return nearest;
+  }
+
+  function findThrowback(){
+    const today = new Date();
+    const mm = today.getMonth(), dd = today.getDate(), curYear = today.getFullYear();
+    const candidates = [];
+    dateLogs.forEach(item=>{
+      if(!item.date) return;
+      const d = new Date(item.date + 'T00:00:00');
+      if(d.getMonth() === mm && d.getDate() === dd && d.getFullYear() < curYear){
+        candidates.push({ type:'datelog', yearsAgo: curYear - d.getFullYear(), item });
+      }
+    });
+    letters.forEach(item=>{
+      const d = new Date(item.createdAt || 0);
+      if(d.getMonth() === mm && d.getDate() === dd && d.getFullYear() < curYear && d.getFullYear() > 2000){
+        candidates.push({ type:'letter', yearsAgo: curYear - d.getFullYear(), item });
+      }
+    });
+    if(candidates.length === 0) return null;
+    candidates.sort((a,b)=> a.yearsAgo - b.yearsAgo);
+    return candidates[0];
+  }
+
+  function relativeTimeKR(ts){
+    if(!ts) return '';
+    const diffMs = Date.now() - ts;
+    const diffMin = Math.floor(diffMs / 60000);
+    if(diffMin < 1) return '방금 전';
+    if(diffMin < 60) return `${diffMin}분 전`;
+    const diffHour = Math.floor(diffMin / 60);
+    if(diffHour < 24) return `${diffHour}시간 전`;
+    const diffDay = Math.floor(diffHour / 24);
+    if(diffDay < 7) return `${diffDay}일 전`;
+    const d = new Date(ts);
+    return `${d.getMonth()+1}.${d.getDate()}`;
+  }
+
+  function buildActivityFeed(){
+    const items = [];
+    schedule.forEach(it=>{
+      if(!it.createdAt) return;
+      items.push({ ts: it.createdAt, author: it.author, label:'일정', text: it.title, tab:'schedule' });
+    });
+    wishes.forEach(it=>{
+      items.push({ ts: it.createdAt || 0, author: it.author, label:'위시', text: it.title, tab:'wish' });
+    });
+    dateLogs.forEach(it=>{
+      if(!it.createdAt) return;
+      items.push({ ts: it.createdAt, author: it.author, label:'데이트기록', text: it.title, tab:'datelog' });
+    });
+    boards.forEach(it=>{
+      items.push({ ts: it.createdAt || 0, author: it.author, label:'게시판', text: it.title, tab:'board' });
+    });
+    letters.forEach(it=>{
+      items.push({ ts: it.createdAt || 0, author: it.author, label:'편지', text: it.title || it.body, tab:'letter' });
+    });
+    return items.sort((a,b)=> b.ts - a.ts).slice(0, 2);
+  }
+
+  let renderHomeDebounceTimer = null;
+  function renderHome(){
+    clearTimeout(renderHomeDebounceTimer);
+    renderHomeDebounceTimer = setTimeout(renderHomeImmediate, 120);
+  }
+  function renderHomeImmediate(){
+    const todayEl = document.getElementById('homeToday');
+    if(todayEl) todayEl.textContent = formatTodayKR();
+
+    const annivMini = document.getElementById('homeAnnivMini');
+    if(annivMini){
+      const anv = nearestAnniversary();
+      if(!anv){
+        annivMini.innerHTML = `등록된 기념일이 없어`;
+      } else {
+        annivMini.innerHTML = anv.diffDays === 0
+          ? `🎉 오늘은 <b>${escapeHTML(anv.title)}</b>야!`
+          : `${escapeHTML(anv.title)}까지 <b>D-${anv.diffDays}</b>`;
+      }
+    }
+
+    const nextDateCard = document.getElementById('homeNextDateCard');
+    if(nextDateCard){
+      const nextDate = findNextDatePlan();
+      const today = new Date(); today.setHours(0,0,0,0);
+      if(nextDate){
+        const dDiff = Math.round((new Date(nextDate.date+'T00:00:00') - today) / 86400000);
+        const participants = nextDate.participants || [];
+        nextDateCard.innerHTML = `
+          <div class="home-next-label">💜 다음 데이트</div>
+          <div class="home-next-title">${dDiff === 0 ? '오늘이야!' : 'D-' + dDiff} · ${escapeHTML(nextDate.title)}</div>
+          <div class="home-next-participants">
+            ${participants.map(p=>`<span class="recipient-chip color-${colorKeyOf(p)}">${p}</span>`).join('')}
+          </div>
+        `;
+      } else {
+        nextDateCard.innerHTML = `<div class="home-next-label">💜 다음 데이트</div><div class="home-next-sub">예정된 데이트가 없어</div>`;
+      }
+    }
+
+    renderStatusBoard();
+
+    const feedCard = document.getElementById('homeFeedCard');
+    if(feedCard){
+      const feed = buildActivityFeed();
+      if(feed.length === 0){
+        feedCard.innerHTML = `<div class="home-next-label">🕓 최근 활동</div><div class="home-next-sub">아직 활동이 없어</div>`;
+      } else {
+        const authorClass = a => `color-${colorKeyOf(a)}`;
+        feedCard.innerHTML = `
+          <div class="home-next-label">🕓 최근 활동</div>
+          ${feed.map(f => `<div class="home-feed-item" data-tab-target="${f.tab}">
+            <span class="home-feed-author ${authorClass(f.author)}">${f.author||''}</span>
+            <span class="home-feed-text">${f.label} · ${escapeHTML((f.text||'').slice(0,24))}</span>
+            <span class="home-feed-time">${relativeTimeKR(f.ts)}</span>
+          </div>`).join('')}
+        `;
+        feedCard.querySelectorAll('.home-feed-item').forEach(el=>{
+          el.addEventListener('click', ()=> activateTab(el.dataset.tabTarget));
+        });
+      }
+    }
+
+    const throwbackCard = document.getElementById('homeThrowbackCard');
+    if(throwbackCard){
+      const tb = findThrowback();
+      if(tb){
+        const photo = getItemPhotos(tb.item)[0];
+        const title = tb.type === 'datelog' ? tb.item.title : (tb.item.title || tb.item.body.slice(0,20));
+        throwbackCard.classList.remove('hidden');
+        throwbackCard.dataset.tabTarget = tb.type === 'datelog' ? 'datelog' : 'letter';
+        throwbackCard.innerHTML = `
+          ${photo ? `<img class="home-throwback-photo" src="${photo}" loading="lazy">` : '<div style="font-size:28px;">💭</div>'}
+          <div>
+            <div class="home-throwback-label">${tb.yearsAgo}년 전 오늘</div>
+            <div class="home-throwback-title">${escapeHTML(title)}</div>
+          </div>
+        `;
+      } else {
+        throwbackCard.classList.add('hidden');
+      }
+    }
+  }
+
+  function renderStatusBoard(){
+    const board = document.getElementById('statusBoard');
+    if(!board) return;
+    board.innerHTML = ALL_NAMES.map(name=>{
+      const p = profiles[name];
+      const colorKey = colorKeyOf(name);
+      const emoji = (p && p.status && p.status.emoji) || '🙂';
+      const text = (p && p.status && p.status.text) || '상태 없음';
+      const updatedAt = p && p.status && p.status.updatedAt;
+      const timeAgo = updatedAt ? relativeTimeKR(updatedAt) : '';
+      const clickable = identity === name;
+      return `<div class="status-card color-${colorKey}" ${clickable ? `data-status-edit="1"` : ''}>
+        <div class="s-name">${name}</div>
+        <div class="s-emoji">${escapeHTML(emoji)}</div>
+        <div class="s-text">${escapeHTML(text)}</div>
+        <div class="s-time">${timeAgo}</div>
+      </div>`;
+    }).join('');
+    board.querySelectorAll('[data-status-edit]').forEach(el=>{
+      el.addEventListener('click', openStatusModal);
+    });
+  }
+  function openStatusModal(){
+    const p = profiles[identity];
+    document.getElementById('statusEmojiInput').value = (p && p.status && p.status.emoji) || '';
+    document.getElementById('statusTextInput').value = (p && p.status && p.status.text) || '';
+    document.getElementById('statusModal').classList.remove('hidden');
+  }
+  document.getElementById('statusCancelBtn').addEventListener('click', ()=>{
+    document.getElementById('statusModal').classList.add('hidden');
+  });
+  document.getElementById('statusSaveBtn').addEventListener('click', async ()=>{
+    if(!identity) return;
+    const emoji = document.getElementById('statusEmojiInput').value.trim();
+    const text = document.getElementById('statusTextInput').value.trim();
+    try{
+      await db.collection('profiles').doc(identity).set({
+        colorKey: colorKeyOf(identity),
+        status: { emoji, text, updatedAt: Date.now() }
+      }, { merge: true });
+    }catch(e){ console.error('상태 저장 실패', e); }
+    document.getElementById('statusModal').classList.add('hidden');
+  });
+
+  function getCurrentActiveTab(){
+    const activePanel = document.querySelector('.tab-panel.active');
+    return activePanel ? activePanel.id.replace('panel-','') : null;
+  }
+  function hasUnsavedDraft(tabName){
+    switch(tabName){
+      case 'schedule': return document.getElementById('schedTitle').value.trim() !== '';
+      case 'wish': return document.getElementById('wishTitle').value.trim() !== '' || document.getElementById('wishBody').value.trim() !== '';
+      case 'datelog': return document.getElementById('dateLogTitle').value.trim() !== '';
+      case 'letter': return document.getElementById('letterBody').value.trim() !== '';
+      case 'board': return document.getElementById('boardTitle').value.trim() !== '' || document.getElementById('boardBody').value.trim() !== '';
+      default: return false;
+    }
+  }
+  function resetDraftForTab(tabName){
+    switch(tabName){
+      case 'schedule': resetScheduleForm(); break;
+      case 'wish': resetWishForm(); break;
+      case 'datelog': resetDatelogForm(); break;
+      case 'letter': resetLetterForm(); break;
+      case 'board': resetBoardForm(); break;
+    }
+  }
+  function activateTab(tabName){
+    const panel = document.getElementById('panel-'+tabName);
+    if(!panel) return;
+    const currentTab = getCurrentActiveTab();
+    if(currentTab && currentTab !== tabName && hasUnsavedDraft(currentTab)){
+      const proceed = confirm('작성 중인 내용이 있어.\n다른 탭으로 이동하면 지금 쓴 내용이 사라져.\n\n그래도 이동할까?');
+      if(!proceed) return;
+      resetDraftForTab(currentTab);
+    }
+    // 떠나는 탭에서 펼쳐뒀던 게시물은 접어둬서, 다음에 다시 왔을 때 깔끔하게 시작하도록 함
+    if(currentTab && currentTab !== tabName){
+      const oldPanel = document.getElementById('panel-'+currentTab);
+      if(oldPanel){
+        oldPanel.querySelectorAll('.post-detail:not(.hidden)').forEach(d => d.classList.add('hidden'));
+      }
+      // 편지 탭을 나가면 받는사람 필터도 "전체"로 되돌림 (새로고침한 느낌으로)
+      if(currentTab === 'letter' && letterFilterTarget !== 'all'){
+        letterFilterTarget = 'all';
+        document.querySelectorAll('#letterFilterRow .filter-chip').forEach(b=>{
+          b.classList.toggle('active', b.dataset.letterFilter === 'all');
+        });
+        renderLetters();
+      }
+    }
+    document.querySelectorAll('.tab-panel').forEach(p=>p.classList.remove('active'));
+    panel.classList.add('active');
+    window.scrollTo(0, 0);
+    document.querySelectorAll('.tab-btn').forEach(b=>{
+      b.classList.toggle('active', b.dataset.tab === tabName);
+    });
+    if(typeof startCollectionWatcher === 'function') startCollectionWatcher(tabName);
+  }
+  function activateTabFromHash(){
+    const hash = window.location.hash.replace('#','');
+    if(!hash) return;
+    const [tab, itemId] = hash.split(':');
+    if(!tab) return;
+    if(itemId) navigateToItem(tab, itemId);
+    else activateTab(tab);
+  }
+  document.querySelectorAll('.tab-btn').forEach(btn=>{
+    btn.addEventListener('click', ()=> activateTab(btn.dataset.tab));
+  });
+  document.getElementById('homeThrowbackCard').addEventListener('click', ()=>{
+    const target = document.getElementById('homeThrowbackCard').dataset.tabTarget;
+    if(target) activateTab(target);
+  });
+  document.getElementById('homeNextDateCard').addEventListener('click', ()=> activateTab('schedule'));
+  window.addEventListener('hashchange', activateTabFromHash);
+
+  function updateIdentityChip(){
+    document.getElementById('identityChip').textContent = identity ? `나는 ${identity}` : '나는 ...';
+  }
+  document.getElementById('identityChip').addEventListener('click', ()=>{
+    if(confirm('로그아웃할까?')) firebase.auth().signOut();
+  });
+  document.getElementById('googleLoginBtn').addEventListener('click', ()=>{
+    const provider = new firebase.auth.GoogleAuthProvider();
+    firebase.auth().signInWithPopup(provider).catch(err=>{
+      console.error('로그인 실패', err);
+      if(err.code !== 'auth/popup-closed-by-user'){
+        alert('로그인에 실패했어. 다시 시도해줘.');
+      }
     });
   });
 
-  list.addEventListener("click", async (e) => {
-    const btn = e.target.closest(".join-toggle-btn");
-    if (!btn || !currentUser) return;
-    const id = btn.dataset.id;
-    const joined = btn.dataset.joined === "true";
-    if (joined) {
-      const ref_ = doc(db, "schedule", id);
-      const snap = await getDoc(ref_);
-      const entry = (snap.data().participants || []).find(p => p.uid === currentUser.uid);
-      if (entry) await updateDoc(ref_, { participants: arrayRemove(entry) });
-      loadNextDateEvent();
+  // ---- 삭제 확인 모달 ----
+  let pendingDeleteAction = null;
+  function askDeleteConfirm(action){
+    pendingDeleteAction = action;
+    document.getElementById('confirmModal').classList.remove('hidden');
+  }
+  document.getElementById('confirmCancelBtn').addEventListener('click', ()=>{
+    pendingDeleteAction = null;
+    document.getElementById('confirmModal').classList.add('hidden');
+  });
+  document.getElementById('confirmDeleteBtn').addEventListener('click', async ()=>{
+    const action = pendingDeleteAction;
+    pendingDeleteAction = null;
+    document.getElementById('confirmModal').classList.add('hidden');
+    if(action){ try{ await action(); }catch(err){ console.error(err); } }
+  });
+
+  // ---- 저장 실패시 쓴 내용을 지키면서 사진 없이 재시도 ----
+  function showLoadingOverlay(message){
+    document.querySelector('#loadingOverlay .loading-text').innerHTML = message || '게시 중이야...<br>사진이 있으면 조금 걸릴 수 있어';
+    document.getElementById('loadingOverlay').classList.remove('hidden');
+  }
+  function hideLoadingOverlay(){
+    document.getElementById('loadingOverlay').classList.add('hidden');
+  }
+  async function saveWithPhotoFallback(doSave, onSuccess){
+    showLoadingOverlay();
+    try{
+      try{
+        await doSave(true);
+        onSuccess();
+      }catch(e){
+        console.error('저장 실패', e);
+        hideLoadingOverlay();
+        const retry = confirm('저장에 실패했어. 사진이 너무 크면 실패할 수 있어.\n\n사진 없이 다시 저장할까? (쓴 내용은 그대로 남아있어)');
+        if(retry){
+          showLoadingOverlay();
+          try{
+            await doSave(false);
+            onSuccess();
+            alert('사진 없이 저장했어. 사진은 조금 작은 걸로 다시 추가해봐도 좋아.');
+          }catch(e2){
+            console.error('재시도도 실패', e2);
+            alert('다시 시도했는데도 실패했어. 인터넷 연결을 확인해줘. 쓴 내용은 그대로 남아있어.');
+          }
+        }
+      }
+    } finally {
+      hideLoadingOverlay();
+    }
+  }
+
+  // ---- 일정 ----
+  let editingScheduleId = null;
+  let schedIsDatePlan = false;
+  function setDatePlanToggle(v){
+    schedIsDatePlan = v;
+    document.getElementById('schedDatePlanToggle').classList.toggle('active', v);
+  }
+  document.getElementById('schedDatePlanToggle').addEventListener('click', ()=>{
+    setDatePlanToggle(!schedIsDatePlan);
+  });
+  function setRangeToggleState(rowId, btnId, show){
+    document.getElementById(rowId).classList.toggle('hidden', !show);
+    document.getElementById(btnId).textContent = show ? '- 종료일 제거' : '+ 종료일 추가 (선택)';
+  }
+  document.getElementById('schedRangeToggleBtn').addEventListener('click', ()=>{
+    const row = document.getElementById('schedEndDateRow');
+    const willShow = row.classList.contains('hidden');
+    setRangeToggleState('schedEndDateRow', 'schedRangeToggleBtn', willShow);
+    if(willShow){
+      if(!document.getElementById('schedEndDate').value){
+        document.getElementById('schedEndDate').value = document.getElementById('schedDate').value;
+      }
     } else {
-      openJoinModal(id);
+      document.getElementById('schedEndDate').value = '';
+      document.getElementById('schedEndTime').value = '';
     }
   });
-}
-
-// ================= 위시 =================
-function initWish() {
-  const list = document.getElementById("wishList");
-  attachInteractionDelegation(list, "wishlist");
-
-  document.getElementById("wishAddBtn").addEventListener("click", async () => {
-    const title = document.getElementById("wishTitleInput").value.trim();
-    const memo = document.getElementById("wishMemoInput").value.trim();
-    if (!title || !currentUser) return;
-    await addDoc(collection(db, "wishlist"), {
-      title, memo, author: currentUser.name, authorUid: currentUser.uid,
-      likes: [], comments: [], createdAt: Timestamp.now()
-    });
-    document.getElementById("wishTitleInput").value = "";
-    document.getElementById("wishMemoInput").value = "";
+  function startEditSchedule(item){
+    editingScheduleId = item.id;
+    document.getElementById('schedDate').value = item.date;
+    document.getElementById('schedTime').value = item.time || '';
+    document.getElementById('schedTitle').value = item.title;
+    document.getElementById('schedMemo').value = item.memo || '';
+    setDatePlanToggle(!!item.isDate);
+    if(item.endDate && item.endDate !== item.date){
+      document.getElementById('schedEndDate').value = item.endDate;
+      document.getElementById('schedEndTime').value = item.endTime || '';
+      setRangeToggleState('schedEndDateRow', 'schedRangeToggleBtn', true);
+    } else {
+      document.getElementById('schedEndDate').value = '';
+      document.getElementById('schedEndTime').value = '';
+      setRangeToggleState('schedEndDateRow', 'schedRangeToggleBtn', false);
+    }
+    document.getElementById('schedAddBtn').textContent = '수정 완료';
+    document.getElementById('schedCancelBtn').classList.remove('hidden');
+    document.getElementById('schedAddBtn').closest('.add-card').scrollIntoView({behavior:'smooth', block:'start'});
+  }
+  function resetScheduleForm(){
+    editingScheduleId = null;
+    document.getElementById('schedTitle').value='';
+    document.getElementById('schedMemo').value='';
+    document.getElementById('schedTime').value='';
+    document.getElementById('schedEndDate').value='';
+    document.getElementById('schedEndTime').value='';
+    setRangeToggleState('schedEndDateRow', 'schedRangeToggleBtn', false);
+    setDatePlanToggle(false);
+    document.getElementById('schedDate').value = localDateStr();
+    document.getElementById('schedAddBtn').textContent = '추가하기';
+    document.getElementById('schedCancelBtn').classList.add('hidden');
+  }
+  document.getElementById('schedCancelBtn').addEventListener('click', resetScheduleForm);
+  document.getElementById('schedAddBtn').addEventListener('click', async ()=>{
+    const date = document.getElementById('schedDate').value;
+    const title = document.getElementById('schedTitle').value.trim();
+    if(!date || !title) return;
+    const memo = document.getElementById('schedMemo').value.trim();
+    const time = document.getElementById('schedTime').value || null;
+    let endDate = document.getElementById('schedEndDate').value || null;
+    if(endDate && endDate < date) endDate = date;
+    const endTime = endDate ? (document.getElementById('schedEndTime').value || null) : null;
+    const isDate = schedIsDatePlan;
+    try{
+      if(editingScheduleId){
+        await db.collection('schedule').doc(editingScheduleId).update({ date, endDate, time, endTime, title, memo, isDate });
+        resetScheduleForm();
+      } else {
+        await db.collection('schedule').doc(genId()).set({ date, endDate, time, endTime, title, memo, isDate, participants: [], author: identity, createdAt: Date.now() });
+        document.getElementById('schedTitle').value='';
+        document.getElementById('schedMemo').value='';
+        document.getElementById('schedTime').value='';
+        document.getElementById('schedEndDate').value='';
+        document.getElementById('schedEndTime').value='';
+        setRangeToggleState('schedEndDateRow', 'schedRangeToggleBtn', false);
+        setDatePlanToggle(false);
+      }
+    }catch(e){ console.error('일정 저장 실패', e); alert('저장에 실패했어. 인터넷 연결을 확인해줘.'); }
+  });
+  function handleScheduleClick(e){
+    const editId = e.target.dataset && e.target.dataset.editSchedule;
+    const delId = e.target.dataset && e.target.dataset.delSchedule;
+    const joinBtn = e.target.closest('[data-join-schedule]');
+    if(editId){
+      const item = schedule.find(s=>s.id===editId);
+      if(item) startEditSchedule(item);
+    } else if(delId){
+      askDeleteConfirm(async ()=>{ await db.collection('schedule').doc(delId).delete(); });
+    } else if(joinBtn){
+      const id = joinBtn.dataset.joinSchedule;
+      const joined = joinBtn.dataset.joined === 'true';
+      if(!identity) return;
+      if(joined){
+        db.collection('schedule').doc(id).update({
+          participants: firebase.firestore.FieldValue.arrayRemove(identity)
+        }).catch(err=>console.error('참여 취소 실패', err));
+      } else {
+        openJoinModal(id);
+      }
+    }
+  }
+  let pendingJoinScheduleId = null;
+  function openJoinModal(scheduleId){
+    pendingJoinScheduleId = scheduleId;
+    document.getElementById('joinModal').classList.remove('hidden');
+  }
+  document.getElementById('joinYesBtn').addEventListener('click', ()=>{
+    if(pendingJoinScheduleId && identity){
+      db.collection('schedule').doc(pendingJoinScheduleId).update({
+        participants: firebase.firestore.FieldValue.arrayUnion(identity)
+      }).catch(err=>console.error('참여 등록 실패', err));
+    }
+    pendingJoinScheduleId = null;
+    document.getElementById('joinModal').classList.add('hidden');
+  });
+  document.getElementById('joinNoBtn').addEventListener('click', ()=>{
+    pendingJoinScheduleId = null;
+    document.getElementById('joinModal').classList.add('hidden');
+  });
+  document.getElementById('scheduleList').addEventListener('click', handleScheduleClick);
+  document.getElementById('pastScheduleSection').addEventListener('click', handleScheduleClick);
+  document.getElementById('togglePastBtn').addEventListener('click', ()=>{
+    showPastSchedule = !showPastSchedule;
+    renderSchedule();
+  });
+  document.getElementById('clearCalFilterBtn').addEventListener('click', ()=>{
+    calendarFilterDate = null;
+    renderCalendar();
+    renderSchedule();
   });
 
-  const q = query(collection(db, "wishlist"), orderBy("createdAt", "desc"));
-  onSnapshot(q, (snap) => {
-    list.innerHTML = "";
-    snap.forEach(docSnap => {
-      const d = docSnap.data();
-      const id = docSnap.id;
-      const card = document.createElement("div");
-      card.className = "item-card";
-      card.innerHTML = `
-        ${d.authorUid === currentUser?.uid ? `<button class="item-delete" data-id="${id}">삭제</button>` : ""}
-        <div class="item-title">${escapeHtml(d.title)}</div>
-        <div class="item-meta">${authorBadge(d.author, colorKeyByName(d.author))}</div>
-        ${d.memo ? `<div class="item-body">${escapeHtml(d.memo)}</div>` : ""}
-        ${reactionRowHTML("wishlist", id, d.likes || [], d.comments || [])}
+
+  // ---- 하고 싶은 일 ----
+  let editingWishId = null;
+  let showDoneWishes = false;
+  setupPhotoPicker('wishPhotoInput','wishPhotoBtn','wishPhotoPreviewWrap', ()=>pendingWishPhotos, (v)=>{ pendingWishPhotos = v; });
+  function startEditWish(item){
+    editingWishId = item.id;
+    document.getElementById('wishTitle').value = item.title;
+    document.getElementById('wishBody').value = item.body || '';
+    document.getElementById('wishLink').value = item.link || '';
+    if(document.getElementById('wishBody')._autoGrowResize) document.getElementById('wishBody')._autoGrowResize();
+    pendingWishPhotos = getItemPhotos(item).slice();
+    renderPhotoPreviewGrid('wishPhotoPreviewWrap', ()=>pendingWishPhotos, (v)=>{ pendingWishPhotos = v; });
+// 게시하기 / 수정 완료 버튼
+    document.getElementById('wishAddBtn').textContent = '수정 완료';
+    document.getElementById('wishCancelBtn').classList.remove('hidden');
+    document.getElementById('wishAddBtn').closest('.add-card').scrollIntoView({behavior:'smooth', block:'start'});
+  }
+  function resetWishForm(){
+    editingWishId = null;
+    document.getElementById('wishTitle').value = '';
+    document.getElementById('wishBody').value = '';
+    document.getElementById('wishLink').value = '';
+    if(document.getElementById('wishBody')._autoGrowResize) document.getElementById('wishBody')._autoGrowResize();
+    revokePendingPhotoUrls(pendingWishPhotos);
+    pendingWishPhotos = [];
+    renderPhotoPreviewGrid('wishPhotoPreviewWrap', ()=>pendingWishPhotos, (v)=>{ pendingWishPhotos = v; });
+    document.getElementById('wishAddBtn').textContent = '게시하기';
+    document.getElementById('wishCancelBtn').classList.add('hidden');
+  }
+  document.getElementById('wishCancelBtn').addEventListener('click', resetWishForm);
+    document.getElementById('wishAddBtn').addEventListener('click', async () => {
+      const title = document.getElementById('wishTitle').value.trim();
+      if (!title) return;
+
+      const data = {
+        title,
+        body: document.getElementById('wishBody').value.trim(),
+        link: document.getElementById('wishLink').value.trim(),
+        done: false
+      };
+      if(!editingWishId){ data.likes = []; data.comments = []; }
+
+      await saveItem(
+        'wishlist',
+        !!editingWishId,
+        editingWishId,
+        data,
+        pendingWishPhotos,
+        resetWishForm
+      );
+    });
+
+  // 클릭 이벤트 (수정/삭제/체크)
+  function handleWishListClick(e) {
+    const editId = e.target.dataset.editWish;
+    const delId = e.target.dataset.delWish;
+    const checkId = e.target.dataset.checkWish;
+
+    if (editId) startEditWish(wishes.find(s => s.id === editId));
+    else if (delId) deleteItem('wishlist', delId, wishes.find(s => s.id === delId));
+    else if (checkId) {
+      const wishItem = wishes.find(s => s.id === checkId);
+      if(!wishItem) return;
+      const willBeDone = !wishItem.done;
+      if(willBeDone && !confirm('이 위시를 완료로 표시할까?')) return;
+      db.collection('wishlist').doc(checkId).update({ done: willBeDone }).catch(err=>console.error(err));
+    }
+  }
+  document.getElementById('wishList').addEventListener('click', handleWishListClick);
+  document.getElementById('doneWishSection').addEventListener('click', handleWishListClick);
+  document.getElementById('toggleDoneWishBtn').addEventListener('click', ()=>{
+    showDoneWishes = !showDoneWishes;
+    renderWish();
+  });
+
+  // ---- 데이트 기록 ----
+  let editingDatelogId = null;
+  let dateLogSelectedParticipants = [];
+  function renderParticipantChips(containerId, selectedArr){
+    const row = document.getElementById(containerId);
+    row.innerHTML = ALL_NAMES.map(name => `
+      <button type="button" class="chip-toggle ${selectedArr.includes(name)?'active':''}" data-chip-name="${name}">${name}</button>
+    `).join('');
+    row.querySelectorAll('.chip-toggle').forEach(btn=>{
+      btn.addEventListener('click', ()=>{
+        const name = btn.dataset.chipName;
+        const idx = selectedArr.indexOf(name);
+        if(idx === -1) selectedArr.push(name); else selectedArr.splice(idx,1);
+        btn.classList.toggle('active');
+      });
+    });
+  }
+  renderParticipantChips('dateLogParticipantRow', dateLogSelectedParticipants);
+  setupPhotoPicker('dateLogPhotoInput','dateLogPhotoBtn','dateLogPhotoPreviewWrap', ()=>pendingDateLogPhotos, (v)=>{ pendingDateLogPhotos = v; });
+  document.getElementById('dateLogRangeToggleBtn').addEventListener('click', ()=>{
+    const row = document.getElementById('dateLogEndDateRow');
+    const willShow = row.classList.contains('hidden');
+    setRangeToggleState('dateLogEndDateRow', 'dateLogRangeToggleBtn', willShow);
+    if(willShow){
+      if(!document.getElementById('dateLogEndDate').value){
+        document.getElementById('dateLogEndDate').value = document.getElementById('dateLogDate').value;
+      }
+    } else {
+      document.getElementById('dateLogEndDate').value = '';
+      document.getElementById('dateLogEndTime').value = '';
+    }
+  });
+  function startEditDatelog(item){
+    editingDatelogId = item.id;
+    document.getElementById('dateLogDate').value = item.date;
+    document.getElementById('dateLogTime').value = item.time || '';
+    document.getElementById('dateLogTitle').value = item.title;
+    document.getElementById('dateLogLocation').value = item.location || '';
+    document.getElementById('dateLogLocationResults').classList.add('hidden');
+    const statusEl0 = document.getElementById('dateLogLocationStatus');
+    if(typeof item.lat === 'number' && typeof item.lng === 'number'){
+      pendingDateLogGeo = { lat: item.lat, lng: item.lng };
+      statusEl0.classList.remove('hidden');
+      statusEl0.textContent = '✅ 저장된 위치가 있어';
+      statusEl0.style.color = '#4A9B6E';
+    } else {
+      pendingDateLogGeo = null;
+      statusEl0.classList.add('hidden');
+    }
+    document.getElementById('dateLogMemo').value = item.memo || '';
+    if(document.getElementById('dateLogMemo')._autoGrowResize) document.getElementById('dateLogMemo')._autoGrowResize();
+    if(item.endDate && item.endDate !== item.date){
+      document.getElementById('dateLogEndDate').value = item.endDate;
+      document.getElementById('dateLogEndTime').value = item.endTime || '';
+      setRangeToggleState('dateLogEndDateRow', 'dateLogRangeToggleBtn', true);
+    } else {
+      document.getElementById('dateLogEndDate').value = '';
+      document.getElementById('dateLogEndTime').value = '';
+      setRangeToggleState('dateLogEndDateRow', 'dateLogRangeToggleBtn', false);
+    }
+    pendingDateLogPhotos = getItemPhotos(item).slice();
+    renderPhotoPreviewGrid('dateLogPhotoPreviewWrap', ()=>pendingDateLogPhotos, (v)=>{ pendingDateLogPhotos = v; });
+    dateLogSelectedParticipants = (item.participants || []).slice();
+    renderParticipantChips('dateLogParticipantRow', dateLogSelectedParticipants);
+    document.getElementById('dateLogAddBtn').textContent = '수정 완료';
+    document.getElementById('dateLogCancelBtn').classList.remove('hidden');
+    document.getElementById('dateLogAddBtn').closest('.add-card').scrollIntoView({behavior:'smooth', block:'start'});
+  }
+  function resetDatelogForm(){
+    editingDatelogId = null;
+    document.getElementById('dateLogTitle').value='';
+    document.getElementById('dateLogLocation').value='';
+    document.getElementById('dateLogLocationStatus').classList.add('hidden');
+    document.getElementById('dateLogLocationResults').classList.add('hidden');
+    pendingDateLogGeo = null;
+    document.getElementById('dateLogMemo').value='';
+    if(document.getElementById('dateLogMemo')._autoGrowResize) document.getElementById('dateLogMemo')._autoGrowResize();
+    document.getElementById('dateLogTime').value='';
+    document.getElementById('dateLogEndDate').value='';
+    document.getElementById('dateLogEndTime').value='';
+    setRangeToggleState('dateLogEndDateRow', 'dateLogRangeToggleBtn', false);
+    document.getElementById('dateLogDate').value = localDateStr();
+    revokePendingPhotoUrls(pendingDateLogPhotos);
+    pendingDateLogPhotos = [];
+    renderPhotoPreviewGrid('dateLogPhotoPreviewWrap', ()=>pendingDateLogPhotos, (v)=>{ pendingDateLogPhotos = v; });
+    dateLogSelectedParticipants = [];
+    renderParticipantChips('dateLogParticipantRow', dateLogSelectedParticipants);
+    document.getElementById('dateLogAddBtn').textContent = '기록하기';
+    document.getElementById('dateLogCancelBtn').classList.add('hidden');
+  }
+  document.getElementById('dateLogLocation').addEventListener('input', ()=>{
+    pendingDateLogGeo = null;
+    document.getElementById('dateLogLocationStatus').classList.add('hidden');
+  });
+  document.getElementById('dateLogLocation').addEventListener('keydown', (e)=>{
+    if(e.key === 'Enter'){
+      e.preventDefault();
+      e.target.blur();
+      setTimeout(()=>{ document.activeElement && document.activeElement.blur(); }, 0);
+      document.getElementById('dateLogLocationSearchBtn').click();
+    }
+  });
+  document.getElementById('dateLogLocationSearchBtn').addEventListener('click', async ()=>{
+    const query = document.getElementById('dateLogLocation').value.trim();
+    if(!query) return;
+    const resultsEl = document.getElementById('dateLogLocationResults');
+    document.getElementById('dateLogLocationStatus').classList.add('hidden');
+    resultsEl.classList.remove('hidden');
+    resultsEl.innerHTML = '';
+    showLoadingOverlay('위치 찾는 중이야...');
+    let results;
+    try{
+      results = await searchLocations(query);
+    } finally {
+      hideLoadingOverlay();
+    }
+    if(results.length === 0){
+      resultsEl.innerHTML = `
+        <div class="location-result-item">검색 결과가 없어. 다른 이름으로 시도해봐.</div>
+        <button type="button" class="location-cancel-btn" id="dateLogLocationCancelBtn">✕ 취소</button>
       `;
-      list.appendChild(card);
+      document.getElementById('dateLogLocationCancelBtn').addEventListener('click', ()=>{
+        resultsEl.classList.add('hidden');
+        resultsEl.innerHTML = '';
+        document.getElementById('dateLogLocation').value = '';
+      });
+      return;
+    }
+    resultsEl.innerHTML = results.map((r,i)=>`
+      <div class="location-result-item" data-idx="${i}">
+        <div class="location-result-name">${escapeHTML(r.name)}</div>
+        <div class="location-result-addr">${escapeHTML(r.address || '')}</div>
+      </div>
+    `).join('') + `<button type="button" class="location-cancel-btn" id="dateLogLocationCancelBtn">✕ 취소</button>`;
+    document.getElementById('dateLogLocationCancelBtn').addEventListener('click', ()=>{
+      resultsEl.classList.add('hidden');
+      resultsEl.innerHTML = '';
+      document.getElementById('dateLogLocation').value = '';
+    });
+    resultsEl.querySelectorAll('.location-result-item[data-idx]').forEach(el=>{
+      el.addEventListener('click', ()=>{
+        const r = results[Number(el.dataset.idx)];
+        pendingDateLogGeo = { lat: r.lat, lng: r.lng };
+        document.getElementById('dateLogLocation').value = r.name;
+        resultsEl.classList.add('hidden');
+        resultsEl.innerHTML = '';
+        const statusEl = document.getElementById('dateLogLocationStatus');
+        statusEl.classList.remove('hidden');
+        statusEl.textContent = `✅ 이 위치로 선택했어: ${r.name}`;
+        statusEl.style.color = '#4A9B6E';
+      });
     });
   });
-}
+  document.getElementById('dateLogCancelBtn').addEventListener('click', resetDatelogForm);
+// 1. 기록하기 / 수정 완료 버튼
+  document.getElementById('dateLogAddBtn').addEventListener('click', async () => {
+    const title = document.getElementById('dateLogTitle').value.trim();
+    const date = document.getElementById('dateLogDate').value;
+    const location = document.getElementById('dateLogLocation').value.trim();
+    
+    if (!title || !date) return;
 
-// ================= 데이트기록 =================
-function initDatelog() {
-  const list = document.getElementById("datelogList");
-  attachInteractionDelegation(list, "datelog");
-  populateCheckboxGroup(document.getElementById("datelogParticipantCheckboxes"), "datelog-participant-cb");
+    // 위치 검색 로직 (기존 거 그대로!)
+    let geo = pendingDateLogGeo;
+    if (!geo && location) {
+      showLoadingOverlay('위치 확인 중이야...');
+      try{
+        const results = await searchLocations(location);
+        geo = results[0] ? { lat: results[0].lat, lng: results[0].lng } : null;
+      } finally {
+        hideLoadingOverlay();
+      }
+    }
+    
+    // 이제 saveItem 하나로 끝!
+    await saveItem(
+      'datelog',
+      !!editingDatelogId,
+      editingDatelogId,
+      { 
+        title, 
+        date,
+        memo: document.getElementById('dateLogMemo').value.trim(),
+        location: location,
+        time: document.getElementById('dateLogTime').value || null,
+        endDate: document.getElementById('dateLogEndDate').value || null,
+        endTime: document.getElementById('dateLogEndTime').value || null,
+        lat: geo ? geo.lat : null,
+        lng: geo ? geo.lng : null,
+        participants: dateLogSelectedParticipants.slice()
+      },
+      pendingDateLogPhotos,
+      resetDatelogForm
+    );
+  });
+  
+// 2. 클릭 이벤트 (수정/삭제)
+  document.getElementById('dateLogList').addEventListener('click', (e) => {
+    const editId = e.target.dataset.editDatelog;
+    const delId = e.target.dataset.delDatelog;
 
-  document.getElementById("datelogAddBtn").addEventListener("click", async () => {
-    const title = document.getElementById("datelogTitleInput").value.trim();
-    const date = document.getElementById("datelogDateInput").value;
-    const body = document.getElementById("datelogBodyInput").value.trim();
-    if (!title || !currentUser) return;
-    const participants = [...document.querySelectorAll(".datelog-participant-cb:checked")]
-      .map(cb => ({ uid: cb.value, name: cb.dataset.name }));
-    const files = document.getElementById("datelogPhotoInput").files;
-    const photos = await uploadPhotos(files, `datelog/${Date.now()}`);
-    await addDoc(collection(db, "datelog"), {
-      title, date, body, participants, photos,
-      author: currentUser.name, authorUid: currentUser.uid,
-      createdAt: Timestamp.now()
-    });
-    document.getElementById("datelogTitleInput").value = "";
-    document.getElementById("datelogDateInput").value = "";
-    document.getElementById("datelogBodyInput").value = "";
-    document.getElementById("datelogPhotoInput").value = "";
-    document.querySelectorAll(".datelog-participant-cb").forEach(cb => cb.checked = false);
+    if (editId) startEditDatelog(dateLogs.find(s => s.id === editId));
+    else if (delId) deleteItem('datelog', delId, dateLogs.find(s => s.id === delId));
   });
 
-  const q = query(collection(db, "datelog"), orderBy("date", "desc"));
-  onSnapshot(q, (snap) => {
-    list.innerHTML = "";
-    snap.forEach(docSnap => {
-      const d = docSnap.data();
-      const id = docSnap.id;
-      const card = document.createElement("div");
-      card.className = "item-card";
-      card.innerHTML = `
-        ${d.authorUid === currentUser?.uid ? `<button class="item-delete" data-id="${id}">삭제</button>` : ""}
-        <div class="item-title">${escapeHtml(d.title)}</div>
-        <div class="item-meta">${authorBadge(d.author, colorKeyByName(d.author))}<span>${d.date}</span></div>
-        <div class="participant-row">${(d.participants || []).map(p => `<span class="participant-chip ${colorKeyByName(p.name)}">${escapeHtml(p.name)}</span>`).join("")}</div>
-        ${renderPhotoGrid(d.photos)}
-        <div class="item-body">${escapeHtml(d.body)}</div>
-      `;
-      list.appendChild(card);
-    });
-  });
-}
+  // ---- 자유게시판 ----
+  let editingBoardId = null;
+  setupPhotoPicker('boardPhotoInput','boardPhotoBtn','boardPhotoPreviewWrap', ()=>pendingBoardPhotos, (v)=>{ pendingBoardPhotos = v; });
 
-// ================= 편지 =================
-let letterFilterUid = null;
-let latestLetterDocs = [];
+  function startEditBoard(item){
+    editingBoardId = item.id;
+    document.getElementById('boardTitle').value = item.title || '';
+    document.getElementById('boardBody').value = item.body || '';
+    if(document.getElementById('boardBody')._autoGrowResize) document.getElementById('boardBody')._autoGrowResize();
+    pendingBoardPhotos = getItemPhotos(item).slice();
+    renderPhotoPreviewGrid('boardPhotoPreviewWrap', ()=>pendingBoardPhotos, (v)=>{ pendingBoardPhotos = v; });
 
-function initLetter() {
-  const list = document.getElementById("letterList");
-  populateCheckboxGroup(document.getElementById("letterRecipientCheckboxes"), "letter-recipient-cb");
+    document.getElementById('boardAddBtn').textContent = '수정 완료';
+    document.getElementById('boardCancelBtn').classList.remove('hidden');
+    document.getElementById('boardAddBtn').closest('.add-card').scrollIntoView({behavior:'smooth', block:'start'});
+  }
+  function resetBoardForm(){
+    editingBoardId = null;
+    document.getElementById('boardTitle').value = '';
+    document.getElementById('boardBody').value = '';
+    if(document.getElementById('boardBody')._autoGrowResize) document.getElementById('boardBody')._autoGrowResize();
+    revokePendingPhotoUrls(pendingBoardPhotos);
+    pendingBoardPhotos = [];
+    renderPhotoPreviewGrid('boardPhotoPreviewWrap', ()=>pendingBoardPhotos, (v)=>{ pendingBoardPhotos = v; });
+    document.getElementById('boardAddBtn').textContent = '게시하기';
+    document.getElementById('boardCancelBtn').classList.add('hidden');
+  }
+  document.getElementById('boardCancelBtn').addEventListener('click', resetBoardForm);
 
-  document.getElementById("letterAllRecipientsBox").addEventListener("change", (e) => {
-    document.querySelectorAll(".letter-recipient-cb").forEach(cb => cb.checked = e.target.checked);
-  });
-
-  document.getElementById("letterLockToggle").addEventListener("change", (e) => {
-    document.getElementById("letterUnlockDateInput").classList.toggle("hidden", !e.target.checked);
-  });
-
-  document.getElementById("letterAddBtn").addEventListener("click", async () => {
-    const title = document.getElementById("letterTitleInput").value.trim();
-    const body = document.getElementById("letterBodyInput").value.trim();
-    if (!title || !body || !currentUser) return;
-
-    let recipients = [...document.querySelectorAll(".letter-recipient-cb:checked")].map(cb => cb.value);
-    if (recipients.length === 0) recipients = allProfiles.map(p => p.uid); // 아무도 안 골랐으면 전체로 처리
-
-    const locked = document.getElementById("letterLockToggle").checked;
-    const unlockDateVal = document.getElementById("letterUnlockDateInput").value;
-    const unlockAt = locked && unlockDateVal ? Timestamp.fromDate(new Date(unlockDateVal)) : null;
-
-    const letterRef = await addDoc(collection(db, "letters"), {
-      previewTitle: title, author: currentUser.name, authorUid: currentUser.uid,
-      recipients, unlockAt, createdAt: Timestamp.now()
-    });
-    await setDoc(doc(db, "letters", letterRef.id, "private", "content"), { body });
-
-    document.getElementById("letterTitleInput").value = "";
-    document.getElementById("letterBodyInput").value = "";
-    document.getElementById("letterAllRecipientsBox").checked = false;
-    document.getElementById("letterLockToggle").checked = false;
-    document.getElementById("letterUnlockDateInput").value = "";
-    document.getElementById("letterUnlockDateInput").classList.add("hidden");
-    document.querySelectorAll(".letter-recipient-cb").forEach(cb => cb.checked = false);
+  document.getElementById('boardAddBtn').addEventListener('click', async () => {
+    const title = document.getElementById('boardTitle').value.trim();
+    if (!title) return;
+    const data = { title, body: document.getElementById('boardBody').value.trim() };
+    if(!editingBoardId){ data.likes = []; data.comments = []; }
+    await saveItem('board', !!editingBoardId, editingBoardId, data, pendingBoardPhotos, resetBoardForm);
   });
 
-  renderLetterFilterRow();
+  document.getElementById('boardList').addEventListener('click', (e) => {
+    const editId = e.target.dataset.editBoard;
+    const delId = e.target.dataset.delBoard;
+    if (editId) startEditBoard(boards.find(s => s.id === editId));
+    else if (delId) deleteItem('board', delId, boards.find(s => s.id === delId));
+  });
 
-  list.addEventListener("click", async (e) => {
-    const del = e.target.closest(".item-delete");
-    if (del) {
-      if (confirm("편지를 삭제할까?")) {
-        await deleteDoc(doc(db, "letters", del.dataset.id));
-        await deleteDoc(doc(db, "letters", del.dataset.id, "private", "content")).catch(() => {});
+
+  // ---- 편지 ----
+  let editingLetterId = null;
+  let letterSelectedRecipients = [];
+  let letterLockEnabled = false;
+  renderParticipantChips('letterRecipientRow', letterSelectedRecipients);
+  setupPhotoPicker('letterPhotoInput','letterPhotoBtn','letterPhotoPreviewWrap', ()=>pendingLetterPhotos, (v)=>{ pendingLetterPhotos = v; });
+  document.getElementById('letterLockToggle').addEventListener('click', ()=>{
+    letterLockEnabled = !letterLockEnabled;
+    document.getElementById('letterLockToggle').classList.toggle('active', letterLockEnabled);
+    document.getElementById('letterUnlockDateRow').classList.toggle('hidden', !letterLockEnabled);
+  });
+ 
+  function startEditLetter(item){
+    editingLetterId = item.id;
+    document.getElementById('letterTitle').value = item.title || '';
+    document.getElementById('letterBody').value = item.body || '';
+    if(document.getElementById('letterBody')._autoGrowResize) document.getElementById('letterBody')._autoGrowResize();
+    pendingLetterPhotos = getItemPhotos(item).slice();
+    renderPhotoPreviewGrid('letterPhotoPreviewWrap', ()=>pendingLetterPhotos, (v)=>{ pendingLetterPhotos = v; });
+    letterSelectedRecipients = (item.recipients || []).slice();
+    renderParticipantChips('letterRecipientRow', letterSelectedRecipients);
+    letterLockEnabled = !!item.unlockAt;
+    document.getElementById('letterLockToggle').classList.toggle('active', letterLockEnabled);
+    document.getElementById('letterUnlockDateRow').classList.toggle('hidden', !letterLockEnabled);
+    document.getElementById('letterUnlockDate').value = item.unlockAt ? new Date(item.unlockAt).toISOString().slice(0,10) : '';
+
+    document.getElementById('letterAddBtn').textContent = '수정 완료';
+    document.getElementById('letterCancelBtn').classList.remove('hidden');
+    document.getElementById('letterAddBtn').closest('.add-card').scrollIntoView({behavior:'smooth', block:'start'});
+  }
+  function resetLetterForm(){
+    editingLetterId = null;
+    document.getElementById('letterTitle').value = '';
+    document.getElementById('letterBody').value = '';
+    if(document.getElementById('letterBody')._autoGrowResize) document.getElementById('letterBody')._autoGrowResize();
+    revokePendingPhotoUrls(pendingLetterPhotos);
+    pendingLetterPhotos = [];
+    renderPhotoPreviewGrid('letterPhotoPreviewWrap', ()=>pendingLetterPhotos, (v)=>{ pendingLetterPhotos = v; });
+    letterSelectedRecipients = [];
+    renderParticipantChips('letterRecipientRow', letterSelectedRecipients);
+    letterLockEnabled = false;
+    document.getElementById('letterLockToggle').classList.remove('active');
+    document.getElementById('letterUnlockDateRow').classList.add('hidden');
+    document.getElementById('letterUnlockDate').value = '';
+    document.getElementById('letterAddBtn').textContent = '편지 보내기';
+    document.getElementById('letterCancelBtn').classList.add('hidden');
+  }
+  document.getElementById('letterCancelBtn').addEventListener('click', resetLetterForm);
+    
+// 버튼 이벤트는 함수 바깥에!
+  document.getElementById('letterAddBtn').addEventListener('click', async () => {
+    const title = document.getElementById('letterTitle').value.trim();
+    const body = document.getElementById('letterBody').value.trim();
+    if (!title || !body) return;
+    const recipients = letterSelectedRecipients.length ? letterSelectedRecipients.slice() : ALL_NAMES.slice();
+    const unlockDateVal = document.getElementById('letterUnlockDate').value;
+    const unlockAt = (letterLockEnabled && unlockDateVal) ? new Date(unlockDateVal + 'T00:00:00').getTime() : null;
+    const data = { title, body, recipients, unlockAt };
+    if(!editingLetterId){ data.likes = []; data.comments = []; }
+    await saveItem('letters', !!editingLetterId, editingLetterId, data, pendingLetterPhotos, resetLetterForm);
+  });
+
+  document.getElementById('letterList').addEventListener('click', (e) => {
+    const editId = e.target.dataset.editLetter;
+    const delId = e.target.dataset.delLetter;
+    if (editId) startEditLetter(letters.find(s => s.id === editId));
+    else if (delId) deleteItem('letters', delId, letters.find(s => s.id === delId));
+  });
+
+
+function watch(query, collectionName, onData){
+    query.onSnapshot(snap=>{
+      const items = [];
+      snap.forEach(doc=> items.push({ id: doc.id, ...doc.data() }));
+      onData(items);
+    }, err=>{ console.error(collectionName+' 구독 오류', err); });
+  }
+
+  let watchersStarted = false;
+
+  const EMAIL_MAP = {
+    'sjsj980415@gmail.com': '소정',
+    'xkakak456456@gmail.com': '지수',
+    'qordnsqls@gmail.com': '운빈',
+    'baekungyeong@gmail.com': '운경'
+  };
+
+
+  function showGate(message){
+    document.getElementById('loginGateMsg').innerHTML = message;
+    document.getElementById('loginGate').classList.remove('hidden');
+    document.querySelector('.app-shell').style.visibility = 'hidden';
+  }
+  function hideGate(){
+    document.getElementById('loginGate').classList.add('hidden');
+    document.querySelector('.app-shell').style.visibility = 'visible';
+  }
+
+  const VAPID_KEY = 'YOUR_VAPID_KEY'; // Firebase 콘솔 > 프로젝트 설정 > Cloud Messaging > 웹 푸시 인증서에서 발급
+  let pushToastTimer = null;
+  let pushToastTab = null;
+  let pushToastItemId = null;
+  function showPushToast(title, tab, itemId){
+    pushToastTab = tab || null;
+    pushToastItemId = itemId || null;
+    document.getElementById('pushToastTitle').textContent = title || '';
+    document.getElementById('pushToastBody').textContent = '';
+    const toast = document.getElementById('pushToast');
+    toast.classList.remove('hidden');
+    clearTimeout(pushToastTimer);
+    pushToastTimer = setTimeout(()=>{ toast.classList.add('hidden'); }, 5000);
+  }
+  document.getElementById('pushToast').addEventListener('click', ()=>{
+    document.getElementById('pushToast').classList.add('hidden');
+    clearTimeout(pushToastTimer);
+    if(pushToastItemId && pushToastTab) navigateToItem(pushToastTab, pushToastItemId);
+    else if(pushToastTab) activateTab(pushToastTab);
+  });
+
+  async function setupPushNotifications(){
+    try{
+      if(!('serviceWorker' in navigator) || !('Notification' in window)) return;
+      const registration = await navigator.serviceWorker.register('firebase-messaging-sw.js');
+      const permission = await Notification.requestPermission();
+      if(permission !== 'granted') return;
+      const messaging = firebase.messaging();
+      const token = await messaging.getToken({ vapidKey: VAPID_KEY, serviceWorkerRegistration: registration });
+      if(token){
+        await db.collection('fcmTokens').doc(identity).set({ token, updatedAt: Date.now() });
+      }
+      messaging.onMessage((payload)=>{
+        showPushToast(
+          payload.notification && payload.notification.title,
+          payload.data && payload.data.tab,
+          payload.data && payload.data.itemId
+        );
+      });
+    }catch(e){
+      console.error('푸시 알림 설정 실패', e);
+    }
+  }
+  function maybeShowNotifPrompt(){
+    if('Notification' in window && Notification.permission === 'default'){
+      document.getElementById('notifPrompt').classList.remove('hidden');
+    }
+  }
+  document.getElementById('notifEnableBtn').addEventListener('click', async ()=>{
+    document.getElementById('notifPrompt').classList.add('hidden');
+    showLoadingOverlay('알림 설정 중이야...');
+    try{
+      await setupPushNotifications();
+    } finally {
+      hideLoadingOverlay();
+    }
+  });
+  document.getElementById('notifDismissBtn').addEventListener('click', ()=>{
+    document.getElementById('notifPrompt').classList.add('hidden');
+  });
+
+function startWatchers(){
+    if(watchersStarted) return;
+    watchersStarted = true;
+
+    // [일정/기념일/프로필] 홈 화면에 바로 필요해서 즉시 불러옴
+    startCollectionWatcher('schedule');
+    watchAnniversaries();
+    watchProfiles();
+
+    // [나머지 3개] 앱을 처음 켤 때 다 같이 무겁게 불러오지 않고,
+    // 그 탭을 처음 열 때 그때 불러오도록 지연시킴 (아래 startCollectionWatcher 참고).
+    // 다만 홈 화면의 "최근 활동/1년 전 오늘" 기능을 위해, 잠깐 쉬는 시간(유휴시간)에
+    // 백그라운드로 조용히 불러와 두기는 함 (탭을 누르면 그 즉시 당겨서 불러옴).
+    const lazyCollections = ['wish', 'datelog', 'letter', 'board'];
+    const loadRestInBackground = () => lazyCollections.forEach(startCollectionWatcher);
+    if('requestIdleCallback' in window){
+      requestIdleCallback(loadRestInBackground, {timeout: 2000});
+    } else {
+      setTimeout(loadRestInBackground, 1200);
+    }
+  }
+
+  function watchAnniversaries(){
+    db.collection('anniversaries').onSnapshot(snap=>{
+      anniversaries = [];
+      snap.forEach(doc=> anniversaries.push({ id: doc.id, ...doc.data() }));
+      renderHome();
+    }, err=>console.error('기념일 구독 실패', err));
+  }
+
+  function watchProfiles(){
+    db.collection('profiles').onSnapshot(snap=>{
+      profiles = {};
+      snap.forEach(doc=>{ profiles[doc.id] = doc.data(); });
+      renderStatusBoard();
+    }, err=>console.error('프로필 구독 실패', err));
+  }
+
+  async function ensureMyProfile(){
+    if(!identity) return;
+    const ref = db.collection('profiles').doc(identity);
+    const snap = await ref.get();
+    if(!snap.exists){
+      await ref.set({ colorKey: colorKeyOf(identity), status: { text:'', emoji:'', updatedAt: 0 } });
+    }
+  }
+
+  const collectionWatchersStarted = { schedule:false, wish:false, datelog:false, letter:false, board:false };
+  function startCollectionWatcher(tabName){
+    if(collectionWatchersStarted[tabName]) return;
+    collectionWatchersStarted[tabName] = true;
+
+    if(tabName === 'schedule'){
+      const threeMonthsAgo = new Date();
+      threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3);
+      const pastDateStr = localDateStr(threeMonthsAgo);
+      const scheduleQuery = db.collection('schedule')
+                              .where('date', '>=', pastDateStr)
+                              .orderBy('date', 'asc');
+      watch(scheduleQuery, 'schedule', items=>{ schedule = items; renderSchedule(); renderCalendar(); renderHome(); });
+    } else if(tabName === 'wish'){
+      const wishQuery = db.collection('wishlist').orderBy('createdAt', 'desc').limit(100);
+      watch(wishQuery, 'wishlist', items=>{ wishes = items; renderWish(); renderHome(); });
+    } else if(tabName === 'datelog'){
+      const dateLogQuery = db.collection('datelog').orderBy('date', 'desc').limit(100);
+      watch(dateLogQuery, 'datelog', items=>{ dateLogs = items; renderDateLog(); renderHome(); });
+    } else if(tabName === 'board'){
+      const boardQuery = db.collection('board').orderBy('createdAt', 'desc').limit(100);
+      watch(boardQuery, 'board', items=>{ boards = items; renderBoard(); renderHome(); });
+    } else if(tabName === 'letter'){
+      const letterQuery = db.collection('letters').orderBy('createdAt', 'desc').limit(100);
+      watch(letterQuery, 'letters', items=>{ letters = items; renderLetters(); renderHome(); });
+    }
+  }
+  
+// ---- 좋아요 버튼 클릭 이벤트 ----
+  // ---- 게시물 요약 탭하면 펼치기/접기 ----
+  document.querySelector('main').addEventListener('click', (e) => {
+    const summary = e.target.closest('.post-summary');
+    if (!summary) return;
+    const card = summary.closest('[data-item-id]');
+    const detail = card ? card.querySelector('.post-detail') : null;
+    if (detail) detail.classList.toggle('hidden');
+  });
+
+  document.querySelector('main').addEventListener('click', (e) => {
+    const likeBtn = e.target.closest('.like-btn');
+    if (!likeBtn) return;
+    
+    // 눌린 버튼의 컬렉션(datelog, wishlist, board, letters)과 문서 ID 가져오기
+    const col = likeBtn.dataset.likeCol;
+    const id = likeBtn.dataset.likeId;
+    
+    // 현재 눌린 게시물 데이터 찾기
+    let list = [];
+    if (col === 'datelog') list = dateLogs;
+    else if (col === 'letters') list = letters;
+    else if (col === 'wishlist') list = wishes;
+    else if (col === 'board') list = boards;
+    
+    const item = list.find(x => x.id === id);
+    if (!item || !identity) return; // 로그인 안 되어 있으면 무시
+    
+    const currentLikes = item.likes || [];
+    const hasLiked = currentLikes.includes(identity);
+    
+    // 1. 화면상에서 먼저 하트를 칠하고 통통 튀게 만들기 (미리 보여주기)
+    likeBtn.classList.add('like-pop');
+    if (!hasLiked) {
+      likeBtn.classList.add('liked');
+      likeBtn.querySelector('.heart-icon').innerHTML = pixelHeartSVG(true);
+    }
+    
+    // 2. 0.3초(300ms) 동안 애니메이션이 끝나길 기다렸다가 DB에 저장!
+    setTimeout(async () => {
+      likeBtn.classList.remove('like-pop');
+      try {
+        if (hasLiked) {
+          // 이미 눌렀으면 '내 이름' 빼기 (좋아요 취소)
+          await db.collection(col).doc(id).update({ 
+            likes: firebase.firestore.FieldValue.arrayRemove(identity) 
+          });
+        } else {
+          // 안 눌렀으면 '내 이름' 추가 (좋아요)
+          await db.collection(col).doc(id).update({ 
+            likes: firebase.firestore.FieldValue.arrayUnion(identity) 
+          });
+        }
+      } catch(err) {
+        console.error('좋아요 업데이트 실패:', err);
+      }
+    }, 300);
+  });
+
+  // ---- 댓글 버튼 이벤트 (열기 / 작성 / 삭제) ----
+  document.querySelector('main').addEventListener('click', (e) => {
+    // 1. 댓글창 열기/닫기 토글
+    const toggleBtn = e.target.closest('.comment-btn');
+    if (toggleBtn) {
+      const col = toggleBtn.dataset.toggleComment;
+      const id = toggleBtn.dataset.toggleId;
+      const sectionKey = `${col}-${id}`;
+      
+      if (openCommentSections.has(sectionKey)) {
+        openCommentSections.delete(sectionKey);
+      } else {
+        openCommentSections.add(sectionKey);
+      }
+      
+      const section = document.getElementById(`comments-${sectionKey}`);
+      if (section) section.classList.toggle('active');
+      return;
+    }
+
+    // 2. 댓글 작성
+    const submitBtn = e.target.closest('.c-submit');
+    if (submitBtn) {
+      const col = submitBtn.dataset.commentSubmitCol;
+      const id = submitBtn.dataset.commentSubmitId;
+      const input = document.getElementById(`c-input-${col}-${id}`);
+      const text = input.value.trim();
+      if (!text || !identity) return;
+      
+      const newComment = {
+        author: identity,
+        text: text,
+        ts: Date.now() // 고유 ID 역할
+      };
+      
+      db.collection(col).doc(id).update({
+        comments: firebase.firestore.FieldValue.arrayUnion(newComment)
+      }).catch(err => console.error('댓글 작성 실패:', err));
+      return;
+    }
+
+    // 3. 내 댓글 삭제
+    const delBtn = e.target.closest('.c-del');
+    if (delBtn) {
+      if (!confirm('이 댓글을 지울까?')) return;
+      const col = delBtn.dataset.commentCol;
+      const id = delBtn.dataset.commentId;
+      const ts = Number(delBtn.dataset.commentTs);
+      
+      // 어느 리스트에 있는지 찾기
+      let list = [];
+      if (col === 'datelog') list = dateLogs;
+      else if (col === 'letters') list = letters;
+      else if (col === 'wishlist') list = wishes;
+      else if (col === 'board') list = boards;
+      
+      const item = list.find(x => x.id === id);
+      if (!item) return;
+      
+      // 삭제할 정확한 댓글 객체 찾기 (시간과 작성자가 동일한 것)
+      const targetComment = (item.comments || []).find(c => c.ts === ts && c.author === identity);
+      if (targetComment) {
+        db.collection(col).doc(id).update({
+          comments: firebase.firestore.FieldValue.arrayRemove(targetComment)
+        }).catch(err => console.error('댓글 삭제 실패:', err));
       }
     }
   });
 
-  const q = query(collection(db, "letters"), orderBy("createdAt", "desc"));
-  onSnapshot(q, (snap) => {
-    latestLetterDocs = snap.docs;
-    renderLetterList();
-  });
-}
+  // ---- 검색 (헤더 버튼 → 전체화면 오버레이) ----
+  let searchCategory = 'all';
 
-function renderLetterFilterRow() {
-  const row = document.getElementById("letterFilterRow");
-  row.innerHTML = `<button class="filter-chip active" data-uid="">전체</button>` +
-    allProfiles.map(p => `<button class="filter-chip" data-uid="${p.uid}">${escapeHtml(p.name)}</button>`).join("");
-  row.addEventListener("click", (e) => {
-    const chip = e.target.closest(".filter-chip");
-    if (!chip) return;
-    row.querySelectorAll(".filter-chip").forEach(c => c.classList.remove("active"));
-    chip.classList.add("active");
-    letterFilterUid = chip.dataset.uid || null;
-    renderLetterList();
-  });
-}
 
-function renderLetterList() {
-  const list = document.getElementById("letterList");
-  list.innerHTML = "";
-  latestLetterDocs.forEach(docSnap => {
-    const d = docSnap.data();
-    const id = docSnap.id;
-    if (letterFilterUid && !(d.recipients || []).includes(letterFilterUid)) return;
-
-    const isUnlocked = !d.unlockAt || d.unlockAt.toDate() <= new Date() || d.authorUid === currentUser?.uid;
-    const card = document.createElement("div");
-    card.className = "item-card";
-    card.innerHTML = `
-      ${d.authorUid === currentUser?.uid ? `<button class="item-delete" data-id="${id}">삭제</button>` : ""}
-      <div class="item-title">${isUnlocked ? "" : "🔒 "}${escapeHtml(d.previewTitle)}</div>
-      <div class="item-meta">
-        ${authorBadge(d.author, colorKeyByName(d.author))} →
-        ${(d.recipients || []).map(uid => {
-          const p = allProfiles.find(pr => pr.uid === uid);
-          return p ? `<span class="participant-chip ${p.colorKey}">${escapeHtml(p.name)}</span>` : "";
-        }).join("")}
-      </div>
-      ${!isUnlocked
-        ? `<div class="lock-badge">🔒 ${formatUnlockDate(d.unlockAt)}에 열려</div>`
-        : `<div class="item-body letter-content" data-id="${id}">불러오는 중...</div>`}
-    `;
-    list.appendChild(card);
-    if (isUnlocked) loadLetterContent(id, card.querySelector(".letter-content"));
-  });
-}
-
-async function loadLetterContent(id, el) {
-  try {
-    const snap = await getDoc(doc(db, "letters", id, "private", "content"));
-    el.textContent = snap.exists() ? snap.data().body : "";
-  } catch (e) {
-    el.textContent = "아직 볼 수 없어";
+  function groupKeyForTimestamp(ts){
+    const now = new Date();
+    const curYear = now.getFullYear(), curMonth = now.getMonth();
+    const d = new Date(ts);
+    const y = d.getFullYear(), m = d.getMonth();
+    if(y === curYear){
+      if(m === curMonth) return null;
+      return `month-${m}`;
+    }
+    return `year-${y}`;
   }
-}
 
-function formatUnlockDate(ts) {
-  const d = ts.toDate();
-  return `${d.getMonth() + 1}/${d.getDate()}`;
-}
+  function buildSearchIndex(){
+    const items = [];
+    schedule.forEach(it => items.push({
+      tab:'schedule', label:'일정', ts: it.createdAt || new Date(it.date+'T00:00:00').getTime(),
+      title: it.title, sub: it.memo || fmtShortDate(it.date), item: it,
+      match: `${it.title||''} ${it.memo||''}`.toLowerCase()
+    }));
+    wishes.forEach(it => items.push({
+      tab:'wish', label:'위시', ts: it.createdAt || 0,
+      title: it.title, sub: it.body || '', item: it,
+      match: `${it.title||''} ${it.body||''}`.toLowerCase()
+    }));
+    dateLogs.forEach(it => items.push({
+      tab:'datelog', label:'데이트기록', ts: it.createdAt || new Date(it.date+'T00:00:00').getTime(),
+      title: it.title, sub: it.memo || it.location || '', item: it,
+      match: `${it.title||''} ${it.memo||''} ${it.location||''}`.toLowerCase()
+    }));
+    boards.forEach(it => items.push({
+      tab:'board', label:'게시판', ts: it.createdAt || 0,
+      title: it.title, sub: it.body || '', item: it,
+      match: `${it.title||''} ${it.body||''}`.toLowerCase()
+    }));
+    letters.forEach(it => items.push({
+      tab:'letter', label:'편지', ts: it.createdAt || 0,
+      title: it.title || (it.body||'').slice(0,20), sub: it.body || '', item: it,
+      match: `${it.title||''} ${it.body||''}`.toLowerCase()
+    }));
+    return items;
+  }
 
-// ================= 자유게시판 =================
-function initBoard() {
-  const list = document.getElementById("boardList");
-  attachInteractionDelegation(list, "board");
-
-  document.getElementById("boardAddBtn").addEventListener("click", async () => {
-    const title = document.getElementById("boardTitleInput").value.trim();
-    const body = document.getElementById("boardBodyInput").value.trim();
-    if (!title || !currentUser) return;
-    const files = document.getElementById("boardPhotoInput").files;
-    const photos = await uploadPhotos(files, `board/${Date.now()}`);
-    await addDoc(collection(db, "board"), {
-      title, body, photos, author: currentUser.name, authorUid: currentUser.uid,
-      likes: [], comments: [], createdAt: Timestamp.now()
+  function renderSearchResults(){
+    const container = document.getElementById('searchResults');
+    const q = searchQuery.trim();
+    if(!q){
+      container.innerHTML = '<div class="empty-state" style="padding:30px 10px;">검색어를 입력해봐</div>';
+      return;
+    }
+    let index = buildSearchIndex();
+    if(searchCategory !== 'all') index = index.filter(r => r.tab === searchCategory);
+    const results = index.filter(r => r.match.includes(q)).sort((a,b)=> b.ts - a.ts);
+    if(results.length === 0){
+      container.innerHTML = '<div class="empty-state" style="padding:30px 10px;">검색 결과가 없어.</div>';
+      return;
+    }
+    container.innerHTML = results.map((r,i) => `
+      <div class="search-result-item" data-result-idx="${i}">
+        <span class="search-result-label">${r.label}</span>
+        <div>
+          <div class="search-result-title">${escapeHTML(r.title || '')}</div>
+          ${r.sub ? `<div class="search-result-sub">${escapeHTML(r.sub.slice(0,44))}</div>` : ''}
+        </div>
+      </div>
+    `).join('');
+    container.querySelectorAll('.search-result-item').forEach((el,i)=>{
+      el.addEventListener('click', ()=> navigateToSearchResult(results[i]));
     });
-    document.getElementById("boardTitleInput").value = "";
-    document.getElementById("boardBodyInput").value = "";
-    document.getElementById("boardPhotoInput").value = "";
+  }
+
+  function navigateToItem(tab, itemId){
+    activateTab(tab);
+
+    let item = null;
+    if(tab === 'schedule') item = schedule.find(x=>x.id===itemId);
+    else if(tab === 'wish') item = wishes.find(x=>x.id===itemId);
+    else if(tab === 'datelog') item = dateLogs.find(x=>x.id===itemId);
+    else if(tab === 'board') item = boards.find(x=>x.id===itemId);
+    else if(tab === 'letter') item = letters.find(x=>x.id===itemId);
+
+    if(item){
+      if(tab === 'datelog'){
+        const key = groupKeyForTimestamp(new Date(item.date + 'T00:00:00').getTime());
+        if(key) dateLogExpandedGroups.add(key);
+      } else if(tab === 'letter'){
+        const key = groupKeyForTimestamp(item.createdAt || Date.now());
+        if(key) letterExpandedGroups.add(key);
+      } else if(tab === 'board'){
+        const key = groupKeyForTimestamp(item.createdAt || Date.now());
+        if(key) boardExpandedGroups.add(key);
+      } else if(tab === 'wish' && item.done){
+        showDoneWishes = true;
+      }
+    }
+
+    const renderMap = {
+      schedule: renderSchedule,
+      wish: renderWish,
+      datelog: renderDateLog,
+      board: renderBoard,
+      letter: renderLetters
+    };
+    if(renderMap[tab]) renderMap[tab]();
+
+    setTimeout(()=>{
+      const card = document.querySelector(`[data-item-id="${itemId}"]`);
+      if(card){
+        const detail = card.querySelector('.post-detail');
+        if(detail) detail.classList.remove('hidden');
+        card.scrollIntoView({behavior:'smooth', block:'center'});
+        card.classList.add('search-flash');
+        setTimeout(()=> card.classList.remove('search-flash'), 1600);
+      }
+    }, 150);
+  }
+  function navigateToSearchResult(result){
+    closeSearchOverlay();
+    navigateToItem(result.tab, result.item.id);
+  }
+
+  function openSearchOverlay(){
+    document.getElementById('searchOverlay').classList.remove('hidden');
+    document.getElementById('searchInput').value = '';
+    searchQuery = '';
+    searchCategory = 'all';
+    document.querySelectorAll('.search-cat-btn').forEach(b=> b.classList.toggle('active', b.dataset.cat === 'all'));
+    renderSearchResults();
+    setTimeout(()=> document.getElementById('searchInput').focus(), 50);
+  }
+  function closeSearchOverlay(){
+    document.getElementById('searchOverlay').classList.add('hidden');
+  }
+  document.getElementById('searchOpenBtn').addEventListener('click', openSearchOverlay);
+  document.getElementById('searchCloseBtn').addEventListener('click', closeSearchOverlay);
+  let searchDebounceTimer = null;
+  document.getElementById('searchInput').addEventListener('input', (e)=>{
+    const value = e.target.value.toLowerCase();
+    clearTimeout(searchDebounceTimer);
+    searchDebounceTimer = setTimeout(()=>{
+      searchQuery = value;
+      renderSearchResults();
+    }, 150);
+  });
+  document.getElementById('searchInput').addEventListener('keydown', (e)=>{
+    if(e.key === 'Enter'){
+      e.preventDefault();
+      e.target.blur();
+    }
+  });
+  document.querySelectorAll('.search-cat-btn').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      document.querySelectorAll('.search-cat-btn').forEach(b=>b.classList.remove('active'));
+      btn.classList.add('active');
+      searchCategory = btn.dataset.cat;
+      renderSearchResults();
+    });
   });
 
-  const q = query(collection(db, "board"), orderBy("createdAt", "desc"));
-  onSnapshot(q, (snap) => {
-    list.innerHTML = "";
-    snap.forEach(docSnap => {
-      const d = docSnap.data();
-      const id = docSnap.id;
-      const card = document.createElement("div");
-      card.className = "item-card";
-      card.innerHTML = `
-        ${d.authorUid === currentUser?.uid ? `<button class="item-delete" data-id="${id}">삭제</button>` : ""}
-        <div class="item-title">${escapeHtml(d.title)}</div>
-        <div class="item-meta">${authorBadge(d.author, colorKeyByName(d.author))}</div>
-        ${renderPhotoGrid(d.photos)}
-        <div class="item-body">${escapeHtml(d.body)}</div>
-        ${reactionRowHTML("board", id, d.likes || [], d.comments || [])}
-      `;
-      list.appendChild(card);
+  
+  let visitTracked = false;
+  let visitWatchStarted = false;
+  async function trackVisit(){
+    if(visitTracked) return;
+    visitTracked = true;
+    try{
+      const todayStr = localDateStr();
+      const visitRef = db.collection('stats').doc('visits');
+      await db.runTransaction(async (t)=>{
+        const doc = await t.get(visitRef);
+        if(!doc.exists){
+          t.set(visitRef, { total: 1, todayCount: 1, todayDate: todayStr });
+        } else {
+          const data = doc.data();
+          const newTotal = (data.total || 0) + 1;
+          const newTodayCount = data.todayDate === todayStr ? (data.todayCount || 0) + 1 : 1;
+          t.update(visitRef, { total: newTotal, todayCount: newTodayCount, todayDate: todayStr });
+        }
+      });
+    }catch(e){ console.error('방문 기록 실패', e); }
+  }
+  function watchVisitCounter(){
+    if(visitWatchStarted) return;
+    visitWatchStarted = true;
+    db.collection('stats').doc('visits').onSnapshot(doc=>{
+      const todayEl = document.getElementById('visitToday');
+      const totalEl = document.getElementById('visitTotal');
+      if(!todayEl || !totalEl) return;
+      const todayStr = localDateStr();
+      if(doc.exists){
+        const data = doc.data();
+        const todayCount = (data.todayDate === todayStr) ? (data.todayCount || 0) : 0;
+        todayEl.textContent = `Today ${todayCount}`;
+        totalEl.textContent = `Total ${data.total || 0}`;
+      } else {
+        todayEl.textContent = 'Today 0';
+        totalEl.textContent = 'Total 0';
+      }
+    }, err=>console.error('방문자 수 구독 실패', err));
+  }
+
+  document.querySelectorAll('#letterFilterRow .filter-chip').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      document.querySelectorAll('#letterFilterRow .filter-chip').forEach(b=>b.classList.remove('active'));
+      btn.classList.add('active');
+      letterFilterTarget = btn.dataset.letterFilter;
+      renderLetters();
     });
   });
-}
 
-// ================= 초기화 =================
-async function initApp() {
-  await loadAllProfiles();
-  initHome();
-  initSchedule();
-  initWish();
-  initDatelog();
-  initLetter();
-  initBoard();
-}
+  function init(){
+    renderHome();
+    renderCalendar();
+    document.getElementById('schedDate').value = localDateStr();
+    document.getElementById('dateLogDate').value = localDateStr();
+    setupAutoGrow('wishBody', 240);
+    setupAutoGrow('dateLogMemo', 240);
+    setupAutoGrow('letterBody', 280);
+    setupAutoGrow('boardBody', 240);
+    document.querySelector('.app-shell').style.visibility = 'hidden';
 
-renderToday();
+    firebase.auth().onAuthStateChanged(user=>{
+      if(user && EMAIL_MAP[user.email]){
+        identity = EMAIL_MAP[user.email];
+        updateIdentityChip();
+        hideGate();
+        ensureMyProfile();
+        startWatchers();
+        activateTabFromHash();
+        trackVisit();
+        watchVisitCounter();
+        if('Notification' in window && Notification.permission === 'granted'){
+          setupPushNotifications();
+        } else {
+          maybeShowNotifPrompt();
+        }
+      } else if(user && !EMAIL_MAP[user.email]){
+        firebase.auth().signOut();
+        showGate('이 구글 계정은 사용할 수 없어.<br>백씨스터즈 멤버 계정으로만 로그인해줘.');
+      } else {
+        showGate('백씨스터즈 멤버만 쓸 수 있는 앱이야.<br>구글 계정으로 로그인해줘.');
+      }
+    });
+  }
+    // [삭제 도우미]
+  async function deleteItem(col, id, item) {
+    askDeleteConfirm(async () => {
+      showLoadingOverlay('삭제 중이야...<br>사진이 있으면 조금 걸릴 수 있어');
+      try {
+        if (item.photos) await deletePhotosFromStorage(item.photos);
+        await db.collection(col).doc(id).delete();
+      } catch (err) {
+        console.error('삭제 실패:', err);
+        alert('삭제 중 오류가 발생했어.');
+      } finally {
+        hideLoadingOverlay();
+      }
+    });
+  }
+
+  // [저장 도우미]
+  async function saveItem(col, isEditing, id, data, pendingPhotos, onReset) {
+    await saveWithPhotoFallback(
+      async (withPhotos) => {
+        const photos = withPhotos
+          ? await uploadPhotos(pendingPhotos, (pct) => showLoadingOverlay(`게시 중이야... ${pct}%<br>사진 업로드 중이야`))
+          : pendingPhotos.filter(p => typeof p === 'string');
+        const payload = { ...data, photos };
+        if (isEditing) payload.photo = firebase.firestore.FieldValue.delete();
+        else payload.createdAt = Date.now();
+        
+        if (isEditing) await db.collection(col).doc(id).update(payload);
+        else await db.collection(col).doc(genId()).set({ ...payload, author: identity });
+      },
+      onReset
+    );
+  }
+  init();
+})();
