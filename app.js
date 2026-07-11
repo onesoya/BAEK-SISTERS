@@ -1965,7 +1965,7 @@ function watch(query, collectionName, onData){
     document.querySelector('.app-shell').style.visibility = 'visible';
   }
 
-  const VAPID_KEY = 'YOUR_VAPID_KEY'; // Firebase 콘솔 > 프로젝트 설정 > Cloud Messaging > 웹 푸시 인증서에서 발급
+  const VAPID_KEY = 'BIpLnOAlb1-74XAbEGzbxDkL0aSaFJD5MPxgDtI-oYtJLgvM9AQakApw157oC9pia6aHfxYmuR-xh_0-TXh0D7s';
   let pushToastTimer = null;
   let pushToastTab = null;
   let pushToastItemId = null;
