@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<title>백씨스터즈</title>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<div class="app-shell">
+
+  <header class="app-header">
+    <div class="app-title-row">
+      <div>
+        <div class="app-title">백씨스터즈</div>
+        <div id="homeAnnivPill" class="dday-pill">기념일 불러오는 중...</div>
+      </div>
+    </div>
+    <button id="identityChip" class="identity-chip">로그인</button>
+  </header>
+
+  <main>
+
+    <!-- 홈 -->
+    <section id="tab-home" class="tab-panel active">
+      <div class="home-today" id="homeToday"></div>
+
+      <div class="home-next-card" id="nextDateCard">
+        <div class="home-next-label">다음 데이트</div>
+        <div class="home-next-title" id="nextDateTitle">일정을 불러오는 중...</div>
+        <div class="home-next-sub" id="nextDateSub"></div>
+        <div class="participant-row" id="nextDateParticipants"></div>
+      </div>
+
+      <div class="status-board" id="statusBoard"></div>
+    </section>
+
+    <!-- 일정 -->
+    <section id="tab-schedule" class="tab-panel">
+      <div class="section-title">일정</div>
+      <div class="add-card">
+        <input type="text" id="scheduleTitleInput" placeholder="제목" />
+        <div class="add-row" style="margin-top:8px;">
+          <input type="date" id="scheduleDateInput" />
+          <input type="time" id="scheduleTimeInput" />
+        </div>
+        <label class="checkbox-row">
+          <input type="checkbox" id="scheduleIsDateInput" />
+          <span>💜 데이트 일정으로 등록 (홈 화면에 반영, 참여 기능 생김)</span>
+        </label>
+        <button class="btn btn-primary" id="scheduleAddBtn" style="margin-top:10px;">등록</button>
+      </div>
+      <div id="scheduleList"></div>
+    </section>
+
+    <!-- 위시 -->
+    <section id="tab-wish" class="tab-panel">
+      <div class="section-title">위시</div>
+      <div class="add-card">
+        <input type="text" id="wishTitleInput" placeholder="하고 싶은 일" />
+        <textarea id="wishMemoInput" placeholder="메모 (선택)" rows="2" style="margin-top:8px;"></textarea>
+        <button class="btn btn-primary" id="wishAddBtn" style="margin-top:10px;">등록</button>
+      </div>
+      <div id="wishList"></div>
+    </section>
+
+    <!-- 데이트기록 -->
+    <section id="tab-datelog" class="tab-panel theme-purple">
+      <div class="section-title">데이트 기록</div>
+      <div class="add-card">
+        <input type="text" id="datelogTitleInput" placeholder="제목" />
+        <input type="date" id="datelogDateInput" style="margin-top:8px;" />
+        <textarea id="datelogBodyInput" placeholder="기록 내용" rows="3" style="margin-top:8px;"></textarea>
+        <div class="checkbox-group" id="datelogParticipantCheckboxes"></div>
+        <input type="file" id="datelogPhotoInput" accept="image/*" multiple style="margin-top:8px;" />
+        <button class="btn btn-primary" id="datelogAddBtn" style="margin-top:10px;">등록</button>
+      </div>
+      <div id="datelogList"></div>
+    </section>
+
+    <!-- 편지 -->
+    <section id="tab-letter" class="tab-panel">
+      <div class="section-title">편지</div>
+      <div class="add-card">
+        <input type="text" id="letterTitleInput" placeholder="제목" />
+        <textarea id="letterBodyInput" placeholder="편지 내용" rows="4" style="margin-top:8px;"></textarea>
+        <label class="checkbox-row">
+          <input type="checkbox" id="letterAllRecipientsBox" />
+          <span>전체에게 보내기</span>
+        </label>
+        <div class="checkbox-group" id="letterRecipientCheckboxes"></div>
+        <label class="checkbox-row">
+          <input type="checkbox" id="letterLockToggle" />
+          <span>🔒 특정 날짜에 잠금 해제</span>
+        </label>
+        <input type="date" id="letterUnlockDateInput" class="hidden" style="margin-top:6px;" />
+        <button class="btn btn-primary" id="letterAddBtn" style="margin-top:10px;">보내기</button>
+      </div>
+      <div class="filter-chip-row" id="letterFilterRow"></div>
+      <div id="letterList"></div>
+    </section>
+
+    <!-- 자유게시판 -->
+    <section id="tab-board" class="tab-panel">
+      <div class="section-title">자유게시판</div>
+      <div class="add-card">
+        <input type="text" id="boardTitleInput" placeholder="제목" />
+        <textarea id="boardBodyInput" placeholder="내용" rows="3" style="margin-top:8px;"></textarea>
+        <input type="file" id="boardPhotoInput" accept="image/*" multiple style="margin-top:8px;" />
+        <button class="btn btn-primary" id="boardAddBtn" style="margin-top:10px;">등록</button>
+      </div>
+      <div id="boardList"></div>
+    </section>
+
+  </main>
+
+  <nav class="tabbar">
+    <button class="tab-btn active" data-tab="home">홈</button>
+    <button class="tab-btn" data-tab="schedule">일정</button>
+    <button class="tab-btn" data-tab="wish">위시</button>
+    <button class="tab-btn" data-tab="datelog">데이트</button>
+    <button class="tab-btn" data-tab="letter">편지</button>
+    <button class="tab-btn" data-tab="board">게시판</button>
+  </nav>
+
+</div>
+
+<!-- 참여 확인 모달 -->
+<div id="joinModal" class="modal-overlay hidden">
+  <div class="modal-card">
+    <div class="modal-title">참여할 수 있어? 앗싸뵤!</div>
+    <div class="modal-sub" id="joinModalSub"></div>
+    <div class="modal-btns">
+      <button class="btn btn-outline" id="joinNoBtn">아니</button>
+      <button class="btn btn-primary" id="joinYesBtn">응</button>
+    </div>
+  </div>
+</div>
+
+<!-- 상태 수정 모달 -->
+<div id="statusModal" class="modal-overlay hidden">
+  <div class="modal-card">
+    <div class="modal-title">오늘의 상태</div>
+    <input type="text" id="statusEmojiInput" maxlength="4" placeholder="이모지 (선택)" />
+    <input type="text" id="statusTextInput" maxlength="30" placeholder="한 줄 상태 (예: 과제 중 건들지 마라)" style="margin-top:8px;" />
+    <div class="modal-btns" style="margin-top:14px;">
+      <button class="btn btn-outline" id="statusCancelBtn">취소</button>
+      <button class="btn btn-primary" id="statusSaveBtn">저장</button>
+    </div>
+  </div>
+</div>
+
+<script type="module" src="app.js"></script>
+</body>
+</html>
