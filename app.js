@@ -270,7 +270,7 @@ async function uploadPhotos(photosArray, onProgress) {
   }
   function pixelHeartSVG(filled, size, colorOverride){
     size = size || 15;
-    const c = colorOverride || (filled ? '#FF5C7A' : '#D8C7CE');
+    const c = colorOverride || (filled ? '#9B7FE0' : '#D8C7CE');
     return `<svg viewBox="0 0 7 6" width="${size}" height="${size*6/7}" shape-rendering="crispEdges" style="display:inline-block;vertical-align:middle;"><rect x="1" y="0" width="2" height="1" fill="${c}"/><rect x="4" y="0" width="2" height="1" fill="${c}"/><rect x="0" y="1" width="7" height="1" fill="${c}"/><rect x="0" y="2" width="7" height="1" fill="${c}"/><rect x="1" y="3" width="5" height="1" fill="${c}"/><rect x="2" y="4" width="3" height="1" fill="${c}"/><rect x="3" y="5" width="1" height="1" fill="${c}"/></svg>`;
   }
   function pixelChatSVG(){
@@ -299,6 +299,7 @@ async function uploadPhotos(photosArray, onProgress) {
 
 // 열려 있는 댓글창 ID를 기억하는 공간 (새로고침 시 닫힘 방지)
   let openCommentSections = new Set();
+  let openPostDetails = new Set();
 
   // 댓글창 HTML을 그려주는 공통 함수
   function renderCommentsHTML(item, colName) {
@@ -581,7 +582,7 @@ async function uploadPhotos(photosArray, onProgress) {
     const hasExtra = extraLabel !== fmtShortDate(item.date);
     const participants = item.participants || [];
     const joined = identity && participants.includes(identity);
-    return `<div class="item-card ${isPast(item)?'past':''}" data-item-id="${item.id}">
+    return `<div class="item-card ${isPast(item)?'past':''} ${item.isDate?'date-plan-card':''}" data-item-id="${item.id}">
       <div class="date-badge"><div class="day">${d.day}</div><div class="mon">${d.mon}</div></div>
       <div class="item-body">
         <div class="item-title">${escapeHTML(item.title)}${item.isDate ? ' ' + pixelHeartSVG(true, 16) : ''}</div>
@@ -821,7 +822,7 @@ function renderCalendar(){
           <div class="post-summary-title">${escapeHTML(item.title)}</div>
           <div class="post-summary-meta">${authorTagHTML(item.author)}<span>${dateStr}</span><span class="post-summary-arrow">▾</span></div>
         </div>
-        <div class="post-detail hidden">
+        <div class="post-detail ${openPostDetails.has(item.id) ? '' : 'hidden'}">
           ${item.body ? `<div class="wish-body">${escapeHTML(item.body)}</div>` : ''}
           ${cardPhotosHTML(item)}
           ${item.link ? `<a class="wish-link" href="${escapeHTML(item.link)}" target="_blank" rel="noopener">🔗 ${escapeHTML(linkHost(item.link))}</a>` : ''}
@@ -895,7 +896,7 @@ function renderCalendar(){
           <div class="post-summary-meta">${authorTagHTML(item.author)}<span>${(item.endDate && item.endDate !== item.date) ? `${fmtShortDate(item.date)}~${fmtShortDate(item.endDate)}` : fmtShortDate(item.date)} 데이트</span><span class="post-summary-arrow">▾</span></div>
           <div class="post-summary-sub">올린 날짜 · ${item.createdAt ? formatDateTimeKR(item.createdAt) : '-'}</div>
         </div>
-        <div class="post-detail hidden">
+        <div class="post-detail ${openPostDetails.has(item.id) ? '' : 'hidden'}">
           ${item.location ? `<div class="item-location">📍 ${escapeHTML(item.location)}</div>` : ''}
           ${hasExtra ? `<div class="item-memo">${extraLabel}</div>` : ''}
           ${(item.participants && item.participants.length) ? `<div class="letter-recipients" style="margin-top:6px;">${item.participants.map(p=>`<span class="recipient-chip color-${colorKeyOf(p)}">${p}</span>`).join('')}</div>` : ''}
@@ -946,7 +947,7 @@ function renderDateLog() {
           <div class="post-summary-title">${escapeHTML(item.title)}</div>
           <div class="post-summary-meta">${authorTagHTML(item.author)}<span>${dateStr}</span><span class="post-summary-arrow">▾</span></div>
         </div>
-        <div class="post-detail hidden">
+        <div class="post-detail ${openPostDetails.has(item.id) ? '' : 'hidden'}">
           ${item.body ? `<div class="wish-body">${escapeHTML(item.body)}</div>` : ''}
           ${cardPhotosHTML(item)}
           <div class="wish-footer">
@@ -996,9 +997,9 @@ function renderBoard() {
         <div class="post-summary" data-post-toggle="${item.id}">
           <div class="post-summary-title">${isLocked ? '🔒 ' : ''}${escapeHTML(item.title)}</div>
           <div class="post-summary-meta"><span class="letter-from color-${colorKeyOf(item.author)}">From. ${item.author||''}</span><span>${dateStr}</span><span class="post-summary-arrow">▾</span></div>
+          <div class="letter-recipients" style="margin-top:6px;">${recipients.map(r=>`<span class="recipient-chip color-${colorKeyOf(r)}">To. ${r}</span>`).join('')}</div>
         </div>
-        <div class="post-detail hidden">
-          <div class="letter-recipients">${recipients.map(r=>`<span class="recipient-chip color-${colorKeyOf(r)}">💌 To. ${r}</span>`).join('')}</div>
+        <div class="post-detail ${openPostDetails.has(item.id) ? '' : 'hidden'}">
           ${isLocked
             ? `<div class="lock-badge">🔒 ${fmtShortDate(new Date(item.unlockAt).toISOString().slice(0,10))}에 열려</div>`
             : `<div class="wish-body">${escapeHTML(item.body)}</div>${cardPhotosHTML(item)}`
@@ -1490,8 +1491,10 @@ function renderLetters() {
     }catch(e){ console.error('일정 저장 실패', e); alert('저장에 실패했어. 인터넷 연결을 확인해줘.'); }
   });
   function handleScheduleClick(e){
-    const editId = e.target.dataset && e.target.dataset.editSchedule;
-    const delId = e.target.dataset && e.target.dataset.delSchedule;
+    const editBtn = e.target.closest('[data-edit-schedule]');
+    const delBtn = e.target.closest('[data-del-schedule]');
+    const editId = editBtn && editBtn.dataset.editSchedule;
+    const delId = delBtn && delBtn.dataset.delSchedule;
     const joinBtn = e.target.closest('[data-join-schedule]');
     if(editId){
       const item = schedule.find(s=>s.id===editId);
@@ -1596,9 +1599,12 @@ function renderLetters() {
 
   // 클릭 이벤트 (수정/삭제/체크)
   function handleWishListClick(e) {
-    const editId = e.target.dataset.editWish;
-    const delId = e.target.dataset.delWish;
-    const checkId = e.target.dataset.checkWish;
+    const editBtn = e.target.closest('[data-edit-wish]');
+    const delBtn = e.target.closest('[data-del-wish]');
+    const checkBtn = e.target.closest('[data-check-wish]');
+    const editId = editBtn && editBtn.dataset.editWish;
+    const delId = delBtn && delBtn.dataset.delWish;
+    const checkId = checkBtn && checkBtn.dataset.checkWish;
 
     if (editId) startEditWish(wishes.find(s => s.id === editId));
     else if (delId) deleteItem('wishlist', delId, wishes.find(s => s.id === delId));
@@ -1815,8 +1821,10 @@ function renderLetters() {
   
 // 2. 클릭 이벤트 (수정/삭제)
   document.getElementById('dateLogList').addEventListener('click', (e) => {
-    const editId = e.target.dataset.editDatelog;
-    const delId = e.target.dataset.delDatelog;
+    const editBtn = e.target.closest('[data-edit-datelog]');
+    const delBtn = e.target.closest('[data-del-datelog]');
+    const editId = editBtn && editBtn.dataset.editDatelog;
+    const delId = delBtn && delBtn.dataset.delDatelog;
 
     if (editId) startEditDatelog(dateLogs.find(s => s.id === editId));
     else if (delId) deleteItem('datelog', delId, dateLogs.find(s => s.id === delId));
@@ -1860,8 +1868,10 @@ function renderLetters() {
   });
 
   document.getElementById('boardList').addEventListener('click', (e) => {
-    const editId = e.target.dataset.editBoard;
-    const delId = e.target.dataset.delBoard;
+    const editBtn = e.target.closest('[data-edit-board]');
+    const delBtn = e.target.closest('[data-del-board]');
+    const editId = editBtn && editBtn.dataset.editBoard;
+    const delId = delBtn && delBtn.dataset.delBoard;
     if (editId) startEditBoard(boards.find(s => s.id === editId));
     else if (delId) deleteItem('board', delId, boards.find(s => s.id === delId));
   });
@@ -1930,8 +1940,10 @@ function renderLetters() {
   });
 
   document.getElementById('letterList').addEventListener('click', (e) => {
-    const editId = e.target.dataset.editLetter;
-    const delId = e.target.dataset.delLetter;
+    const editBtn = e.target.closest('[data-edit-letter]');
+    const delBtn = e.target.closest('[data-del-letter]');
+    const editId = editBtn && editBtn.dataset.editLetter;
+    const delId = delBtn && delBtn.dataset.delLetter;
     if (editId) startEditLetter(letters.find(s => s.id === editId));
     else if (delId) deleteItem('letters', delId, letters.find(s => s.id === delId));
   });
@@ -2053,8 +2065,62 @@ function startWatchers(){
       anniversaries = [];
       snap.forEach(doc=> anniversaries.push({ id: doc.id, ...doc.data() }));
       renderHome();
+      renderAnnivExistingList();
     }, err=>console.error('기념일 구독 실패', err));
   }
+
+  // ---- 기념일 관리 모달 ----
+  function renderAnnivExistingList(){
+    const wrap = document.getElementById('annivExistingList');
+    if(!wrap) return;
+    if(anniversaries.length === 0){
+      wrap.innerHTML = `<div style="font-size:13px; color:var(--plum-soft); padding:8px 0;">등록된 기념일이 없어</div>`;
+      return;
+    }
+    wrap.innerHTML = anniversaries.map(a => `
+      <div style="display:flex; align-items:center; justify-content:space-between; padding:8px 0; border-bottom:1px solid #F5EBEE;">
+        <div style="font-size:14px;">
+          ${escapeHTML(a.title)}
+          <span style="font-size:11.5px; color:var(--plum-soft);">
+            ${a.recurring===false ? `${a.year}.${a.month}.${a.day}` : `매년 ${a.month}/${a.day}`}
+          </span>
+        </div>
+        <button type="button" class="del-btn" data-del-anniv="${a.id}">✕</button>
+      </div>
+    `).join('');
+    wrap.querySelectorAll('[data-del-anniv]').forEach(btn=>{
+      btn.addEventListener('click', ()=>{
+        if(confirm('이 기념일을 삭제할까?')){
+          db.collection('anniversaries').doc(btn.dataset.delAnniv).delete().catch(e=>console.error(e));
+        }
+      });
+    });
+  }
+  document.getElementById('annivAddBtn').addEventListener('click', ()=>{
+    renderAnnivExistingList();
+    document.getElementById('annivModal').classList.remove('hidden');
+  });
+  document.getElementById('annivCloseBtn').addEventListener('click', ()=>{
+    document.getElementById('annivModal').classList.add('hidden');
+  });
+  document.getElementById('annivAddSaveBtn').addEventListener('click', async ()=>{
+    const title = document.getElementById('annivTitleInput').value.trim();
+    const dateVal = document.getElementById('annivDateInput').value;
+    const recurring = document.getElementById('annivRecurringInput').checked;
+    if(!title || !dateVal) return;
+    const [y, m, d] = dateVal.split('-').map(Number);
+    try{
+      await db.collection('anniversaries').add({
+        title, month: m, day: d,
+        recurring,
+        year: recurring ? null : y,
+        createdBy: identity, createdAt: Date.now()
+      });
+      document.getElementById('annivTitleInput').value = '';
+      document.getElementById('annivDateInput').value = '';
+      document.getElementById('annivRecurringInput').checked = true;
+    }catch(e){ console.error('기념일 추가 실패', e); alert('추가에 실패했어.'); }
+  });
 
   function watchProfiles(){
     db.collection('profiles').onSnapshot(snap=>{
@@ -2108,7 +2174,15 @@ function startWatchers(){
     if (!summary) return;
     const card = summary.closest('[data-item-id]');
     const detail = card ? card.querySelector('.post-detail') : null;
-    if (detail) detail.classList.toggle('hidden');
+    if (!detail) return;
+    const id = card.dataset.itemId;
+    if (openPostDetails.has(id)) {
+      openPostDetails.delete(id);
+      detail.classList.add('hidden');
+    } else {
+      openPostDetails.add(id);
+      detail.classList.remove('hidden');
+    }
   });
 
   document.querySelector('main').addEventListener('click', (e) => {

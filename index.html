@@ -17,24 +17,27 @@
   <header class="app-header">
     <div>
       <div class="app-title">💜백씨스터즈</div>
+      <div class="visit-counter-row">
+        <span id="visitToday"></span>
+        <span id="visitTotal"></span>
+      </div>
     </div>
     <div style="display:flex; align-items:center; gap:8px;">
       <button class="icon-btn" id="searchOpenBtn" title="검색"><img src="search-icon.png" alt="검색"></button>
-      <div style="display:flex; flex-direction:column; align-items:flex-end; gap:3px;">
-        <button class="identity-chip" id="identityChip" title="탭하면 로그아웃">나는 ...</button>
-        <div class="visit-counter">
-          <div id="visitToday"></div>
-          <div id="visitTotal"></div>
-        </div>
-      </div>
+      <button class="identity-chip" id="identityChip" title="탭하면 로그아웃">나는 ...</button>
     </div>
   </header>
 
   <main>
 
     <section class="tab-panel active" id="panel-home">
-      <div class="home-today" id="homeToday"></div>
-      <div class="home-anniv-mini" id="homeAnnivMini"></div>
+      <div class="home-top-row">
+        <div class="home-today" id="homeToday"></div>
+        <div class="home-anniv-row">
+          <div class="home-anniv-mini" id="homeAnnivMini"></div>
+          <button type="button" class="anniv-add-btn" id="annivAddBtn" title="기념일 추가">+</button>
+        </div>
+      </div>
       <div class="home-next-card" id="homeNextDateCard"></div>
       <div class="status-board" id="statusBoard"></div>
       <div class="home-feed-card" id="homeFeedCard"></div>
@@ -69,7 +72,7 @@
         <div class="add-row">
           <input type="text" id="schedTitle" placeholder="무슨 일정이야?">
         </div>
-        <button type="button" class="date-plan-toggle" id="schedDatePlanToggle"><svg viewBox="0 0 7 6" width="16" height="14" shape-rendering="crispEdges" style="display:inline-block;vertical-align:middle;"><rect x="1" y="0" width="2" height="1" fill="#FF5C7A"/><rect x="4" y="0" width="2" height="1" fill="#FF5C7A"/><rect x="0" y="1" width="7" height="1" fill="#FF5C7A"/><rect x="0" y="2" width="7" height="1" fill="#FF5C7A"/><rect x="1" y="3" width="5" height="1" fill="#FF5C7A"/><rect x="2" y="4" width="3" height="1" fill="#FF5C7A"/><rect x="3" y="5" width="1" height="1" fill="#FF5C7A"/></svg> 데이트 일정으로 표시</button>
+        <button type="button" class="date-plan-toggle" id="schedDatePlanToggle"><svg viewBox="0 0 7 6" width="16" height="14" shape-rendering="crispEdges" style="display:inline-block;vertical-align:middle;"><rect x="1" y="0" width="2" height="1" fill="#9B7FE0"/><rect x="4" y="0" width="2" height="1" fill="#9B7FE0"/><rect x="0" y="1" width="7" height="1" fill="#9B7FE0"/><rect x="0" y="2" width="7" height="1" fill="#9B7FE0"/><rect x="1" y="3" width="5" height="1" fill="#9B7FE0"/><rect x="2" y="4" width="3" height="1" fill="#9B7FE0"/><rect x="3" y="5" width="1" height="1" fill="#9B7FE0"/></svg> 데이트 일정으로 표시</button>
         <div class="add-row">
           <textarea id="schedMemo" placeholder="메모 (선택)"></textarea>
         </div>
@@ -193,10 +196,10 @@
       </div>
       <div class="filter-chip-row" id="letterFilterRow">
         <button class="filter-chip active" data-letter-filter="all">전체</button>
-        <button class="filter-chip" data-letter-filter="소정">To. 소정</button>
-        <button class="filter-chip" data-letter-filter="지수">To. 지수</button>
-        <button class="filter-chip" data-letter-filter="운빈">To. 운빈</button>
-        <button class="filter-chip" data-letter-filter="운경">To. 운경</button>
+        <button class="filter-chip filter-chip-narrow" data-letter-filter="소정">소정</button>
+        <button class="filter-chip filter-chip-narrow" data-letter-filter="지수">지수</button>
+        <button class="filter-chip filter-chip-narrow" data-letter-filter="운빈">운빈</button>
+        <button class="filter-chip filter-chip-narrow" data-letter-filter="운경">운경</button>
       </div>
       <div id="letterList"></div>
     </section>
@@ -286,6 +289,27 @@
       <div class="modal-btns">
         <button class="btn" id="statusCancelBtn" style="background:#F0E4E9;color:var(--plum);">취소</button>
         <button class="btn" id="statusSaveBtn">저장</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay hidden" id="annivModal">
+    <div class="modal-card" style="text-align:left; max-height:80vh; overflow-y:auto;">
+      <div class="modal-title" style="text-align:center;">기념일 관리</div>
+      <div id="annivExistingList" style="margin-bottom:14px;"></div>
+      <div class="add-row">
+        <input type="text" id="annivTitleInput" placeholder="이름 (예: 소정 생일)">
+      </div>
+      <div class="add-row">
+        <input type="date" id="annivDateInput" style="width:100%;">
+      </div>
+      <label class="checkbox-row" style="margin-top:0;">
+        <input type="checkbox" id="annivRecurringInput" checked>
+        <span>매년 반복 (생일 등)</span>
+      </label>
+      <div class="modal-btns" style="margin-top:14px;">
+        <button class="btn" id="annivCloseBtn" style="background:#F0E4E9;color:var(--plum);">닫기</button>
+        <button class="btn" id="annivAddSaveBtn">추가하기</button>
       </div>
     </div>
   </div>
