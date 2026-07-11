@@ -1268,6 +1268,17 @@ function renderLetters() {
     document.getElementById('statusTextInput').value = '';
     document.getElementById('statusTextInput').focus();
   });
+
+  // ---- 게시글 작성 폼의 지우기(X) 버튼 공통 처리 (본문/textarea 제외) ----
+  document.querySelectorAll('[data-clear-input]').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const input = document.getElementById(btn.dataset.clearInput);
+      if(!input) return;
+      input.value = '';
+      input.dispatchEvent(new Event('input', {bubbles:true}));
+      input.focus();
+    });
+  });
   document.getElementById('statusSaveBtn').addEventListener('click', async ()=>{
     if(!identity) return;
     const emoji = document.getElementById('statusEmojiInput').value.trim();

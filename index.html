@@ -25,8 +25,8 @@
     <div>
       <div class="app-title">💜백씨스터즈</div>
       <div class="visit-counter-row">
-        <span id="visitToday"></span>
         <span id="visitTotal"></span>
+        <span id="visitToday"></span>
       </div>
     </div>
     <div style="display:flex; align-items:center; gap:8px;">
@@ -76,8 +76,9 @@
           </div>
         </div>
         <button type="button" class="link-toggle-btn" id="schedRangeToggleBtn">+ 종료일 추가 (선택)</button>
-        <div class="add-row">
-          <input type="text" id="schedTitle" placeholder="무슨 일정이야?">
+        <div class="add-row" style="position:relative;">
+          <input type="text" id="schedTitle" placeholder="무슨 일정이야?" style="padding-right:34px;">
+          <button type="button" class="input-clear-btn" data-clear-input="schedTitle">✕</button>
         </div>
         <button type="button" class="date-plan-toggle" id="schedDatePlanToggle"><svg viewBox="0 0 7 6" width="16" height="14" shape-rendering="crispEdges" style="display:inline-block;vertical-align:middle;"><rect x="1" y="0" width="2" height="1" fill="#9B7FE0"/><rect x="4" y="0" width="2" height="1" fill="#9B7FE0"/><rect x="0" y="1" width="7" height="1" fill="#9B7FE0"/><rect x="0" y="2" width="7" height="1" fill="#9B7FE0"/><rect x="1" y="3" width="5" height="1" fill="#9B7FE0"/><rect x="2" y="4" width="3" height="1" fill="#9B7FE0"/><rect x="3" y="5" width="1" height="1" fill="#9B7FE0"/></svg> 데이트 일정으로 표시</button>
         <div class="add-row">
@@ -100,14 +101,16 @@
     <section class="tab-panel" id="panel-wish">
       <div class="section-title">하고 싶은 일</div>
       <div class="add-card">
-        <div class="add-row">
-          <input type="text" id="wishTitle" placeholder="제목">
+        <div class="add-row" style="position:relative;">
+          <input type="text" id="wishTitle" placeholder="제목" style="padding-right:34px;">
+          <button type="button" class="input-clear-btn" data-clear-input="wishTitle">✕</button>
         </div>
         <div class="add-row">
           <textarea id="wishBody" placeholder="어떤 걸 해보고 싶어? 자유롭게 적어봐" style="min-height:80px;"></textarea>
         </div>
-        <div class="add-row">
-          <input type="url" id="wishLink" placeholder="링크 (선택)">
+        <div class="add-row" style="position:relative;">
+          <input type="url" id="wishLink" placeholder="링크 (선택)" style="padding-right:34px;">
+          <button type="button" class="input-clear-btn" data-clear-input="wishLink">✕</button>
         </div>
         <div class="add-row">
           <input type="file" accept="image/*" id="wishPhotoInput" class="hidden" multiple>
@@ -149,11 +152,15 @@
           </div>
         </div>
         <button type="button" class="link-toggle-btn" id="dateLogRangeToggleBtn">+ 종료일 추가 (선택)</button>
-        <div class="add-row">
-          <input type="text" id="dateLogTitle" placeholder="제목">
+        <div class="add-row" style="position:relative;">
+          <input type="text" id="dateLogTitle" placeholder="제목" style="padding-right:34px;">
+          <button type="button" class="input-clear-btn" data-clear-input="dateLogTitle">✕</button>
         </div>
         <div class="add-row">
-          <input type="text" id="dateLogLocation" placeholder="📍 위치 검색 (선택)">
+          <div style="position:relative; flex:1;">
+            <input type="text" id="dateLogLocation" placeholder="📍 위치 검색 (선택)" style="padding-right:34px;">
+            <button type="button" class="input-clear-btn" data-clear-input="dateLogLocation">✕</button>
+          </div>
           <button type="button" class="btn-photo" id="dateLogLocationSearchBtn" style="width:auto;flex-shrink:0;padding:9px 14px;">🔍 검색</button>
         </div>
         <div class="location-results hidden" id="dateLogLocationResults"></div>
@@ -179,8 +186,9 @@
     <section class="tab-panel" id="panel-letter">
       <div class="section-title">편지</div>
       <div class="add-card">
-        <div class="add-row">
-          <input type="text" id="letterTitle" placeholder="제목">
+        <div class="add-row" style="position:relative;">
+          <input type="text" id="letterTitle" placeholder="제목" style="padding-right:34px;">
+          <button type="button" class="input-clear-btn" data-clear-input="letterTitle">✕</button>
         </div>
         <div class="field-label" style="margin:4px 0 6px 2px;">누구에게 보낼까?</div>
         <div class="chip-toggle-row" id="letterRecipientRow"></div>
@@ -214,8 +222,9 @@
     <section class="tab-panel" id="panel-board">
       <div class="section-title">자유게시판</div>
       <div class="add-card">
-        <div class="add-row">
-          <input type="text" id="boardTitle" placeholder="제목">
+        <div class="add-row" style="position:relative;">
+          <input type="text" id="boardTitle" placeholder="제목" style="padding-right:34px;">
+          <button type="button" class="input-clear-btn" data-clear-input="boardTitle">✕</button>
         </div>
         <div class="add-row">
           <textarea id="boardBody" placeholder="자유롭게 남겨봐" style="min-height:80px;"></textarea>
