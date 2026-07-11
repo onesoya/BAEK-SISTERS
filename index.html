@@ -225,6 +225,7 @@
           <button class="btn-photo" id="boardPhotoBtn">📷 사진 추가 (선택)</button>
         </div>
         <div class="photo-preview-grid hidden" id="boardPhotoPreviewWrap"></div>
+        <button type="button" class="date-plan-toggle" id="boardPinToggle">📌 공지로 등록</button>
         <div class="add-row">
           <button class="btn" id="boardAddBtn" style="width:100%;">게시하기</button>
         </div>
@@ -290,8 +291,9 @@
       <div class="add-row">
         <input type="text" id="statusEmojiInput" maxlength="4" placeholder="이모지 (선택)">
       </div>
-      <div class="add-row">
-        <input type="text" id="statusTextInput" maxlength="30" placeholder="한 줄 상태 (예: 과제 중 건들지 마라)">
+      <div class="add-row" style="position:relative;">
+        <input type="text" id="statusTextInput" maxlength="30" placeholder="한 줄 상태" style="padding-right:34px;">
+        <button type="button" id="statusClearBtn" class="input-clear-btn" title="지우기">✕</button>
       </div>
       <div class="modal-btns">
         <button class="btn" id="statusCancelBtn" style="background:#F0E4E9;color:var(--plum);">취소</button>

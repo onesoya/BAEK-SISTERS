@@ -479,6 +479,20 @@
     background:var(--white);border-radius:10px;overflow:hidden;
     box-shadow:3px 3px 0 rgba(74,53,72,0.25);margin-bottom:14px;
   }
+  .wish-card.pinned-card{
+    border-color:var(--pink);
+    box-shadow:3px 3px 0 rgba(155,127,224,0.35);
+  }
+  .pinned-badge{
+    display:inline-flex; align-items:center; gap:3px; font-family:'DungGeunMo',sans-serif;
+    font-size:11px; color:var(--pink); background:var(--pink-soft);
+    padding:3px 9px; border-radius:8px; margin-bottom:6px;
+  }
+  .input-clear-btn{
+    position:absolute; right:8px; top:50%; transform:translateY(-50%);
+    background:none; border:none; color:var(--plum-soft); font-size:15px;
+    cursor:pointer; padding:6px; line-height:1;
+  }
   .wish-photo{width:100%;height:170px;object-fit:cover;display:block;background:#F5EBEE;}
   .wish-content{padding:16px;}
   .wish-title{font-size:17px;margin-bottom:6px;}

@@ -929,7 +929,7 @@ function renderDateLog() {
     item => item.date + 'T00:00:00',
     dateLogCardHTML,
     dateLogExpandedGroups,
-    '<div class="empty-state"><span class="empty-emoji">💛</span>우리의 첫 데이트를<br>기록해봐.</div>'
+    '<div class="empty-state"><span class="empty-emoji">💜</span>우리의 첫 데이트를<br>기록해봐.</div>'
   );
 }
 
@@ -941,9 +941,10 @@ function renderDateLog() {
     const isLiked = identity && likes.includes(identity);
     const likeIcon = pixelHeartSVG(isLiked);
     const commentCount = (item.comments || []).length;
-    return `<div class="wish-card" data-item-id="${item.id}">
+    return `<div class="wish-card ${item.pinned?'pinned-card':''}" data-item-id="${item.id}">
       <div class="wish-content">
         <div class="post-summary" data-post-toggle="${item.id}">
+          ${item.pinned ? `<div class="pinned-badge">📌 공지</div>` : ''}
           <div class="post-summary-title">${escapeHTML(item.title)}</div>
           <div class="post-summary-meta">${authorTagHTML(item.author)}<span>${dateStr}</span><span class="post-summary-arrow">▾</span></div>
         </div>
@@ -972,14 +973,26 @@ function renderDateLog() {
     </div>`;
   }
 function renderBoard() {
+  const list = document.getElementById('boardList');
+  if(boards.length === 0){
+    list.innerHTML = '<div class="empty-state"><span class="empty-emoji">📋</span>아직 게시글이 없어.<br>자유롭게 남겨봐!</div>';
+    return;
+  }
+  const pinned = boards.filter(b => b.pinned);
+  const regular = boards.filter(b => !b.pinned);
+
   renderGroupedByTime(
     'boardList',
-    boards,
+    regular,
     item => item.createdAt || Date.now(),
     boardCardHTML,
     boardExpandedGroups,
-    '<div class="empty-state"><span class="empty-emoji">📋</span>아직 게시글이 없어.<br>자유롭게 남겨봐!</div>'
+    ''
   );
+
+  if(pinned.length > 0){
+    list.insertAdjacentHTML('afterbegin', pinned.map(boardCardHTML).join(''));
+  }
 }
 
 // 3. 편지
@@ -1249,6 +1262,11 @@ function renderLetters() {
   }
   document.getElementById('statusCancelBtn').addEventListener('click', ()=>{
     document.getElementById('statusModal').classList.add('hidden');
+  });
+  document.getElementById('statusClearBtn').addEventListener('click', ()=>{
+    document.getElementById('statusEmojiInput').value = '';
+    document.getElementById('statusTextInput').value = '';
+    document.getElementById('statusTextInput').focus();
   });
   document.getElementById('statusSaveBtn').addEventListener('click', async ()=>{
     if(!identity) return;
@@ -1833,7 +1851,12 @@ function renderLetters() {
 
   // ---- 자유게시판 ----
   let editingBoardId = null;
+  let boardPinEnabled = false;
   setupPhotoPicker('boardPhotoInput','boardPhotoBtn','boardPhotoPreviewWrap', ()=>pendingBoardPhotos, (v)=>{ pendingBoardPhotos = v; });
+  document.getElementById('boardPinToggle').addEventListener('click', ()=>{
+    boardPinEnabled = !boardPinEnabled;
+    document.getElementById('boardPinToggle').classList.toggle('active', boardPinEnabled);
+  });
 
   function startEditBoard(item){
     editingBoardId = item.id;
@@ -1842,6 +1865,8 @@ function renderLetters() {
     if(document.getElementById('boardBody')._autoGrowResize) document.getElementById('boardBody')._autoGrowResize();
     pendingBoardPhotos = getItemPhotos(item).slice();
     renderPhotoPreviewGrid('boardPhotoPreviewWrap', ()=>pendingBoardPhotos, (v)=>{ pendingBoardPhotos = v; });
+    boardPinEnabled = !!item.pinned;
+    document.getElementById('boardPinToggle').classList.toggle('active', boardPinEnabled);
 
     document.getElementById('boardAddBtn').textContent = '수정 완료';
     document.getElementById('boardCancelBtn').classList.remove('hidden');
@@ -1855,6 +1880,8 @@ function renderLetters() {
     revokePendingPhotoUrls(pendingBoardPhotos);
     pendingBoardPhotos = [];
     renderPhotoPreviewGrid('boardPhotoPreviewWrap', ()=>pendingBoardPhotos, (v)=>{ pendingBoardPhotos = v; });
+    boardPinEnabled = false;
+    document.getElementById('boardPinToggle').classList.remove('active');
     document.getElementById('boardAddBtn').textContent = '게시하기';
     document.getElementById('boardCancelBtn').classList.add('hidden');
   }
@@ -1863,7 +1890,7 @@ function renderLetters() {
   document.getElementById('boardAddBtn').addEventListener('click', async () => {
     const title = document.getElementById('boardTitle').value.trim();
     if (!title) return;
-    const data = { title, body: document.getElementById('boardBody').value.trim() };
+    const data = { title, body: document.getElementById('boardBody').value.trim(), pinned: boardPinEnabled };
     if(!editingBoardId){ data.likes = []; data.comments = []; }
     await saveItem('board', !!editingBoardId, editingBoardId, data, pendingBoardPhotos, resetBoardForm);
   });
