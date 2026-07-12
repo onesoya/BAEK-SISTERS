@@ -2806,19 +2806,20 @@ function startWatchers(){
     };
 
     // 화면이 아직 백그라운드 상태(안 보이는 상태)면, setTimeout이 늦게 실행되거나
-    // 아예 건너뛰어질 수 있어서(특히 안드로이드), 실제로 화면이 "보이는 상태"가 되는
-    // 순간을 직접 감지해서 그때 확실하게 다시 시도하는 안전장치를 추가함.
-    let visibilityRetryDone = false;
+    // 아예 건너뛰어질 수 있어서(특히 안드로이드), "화면이 실제로 보이게 되는" 걸
+    // 알려줄 수 있는 여러 이벤트(visibilitychange/focus/pageshow)에 전부 걸어두고
+    // 그중 뭐라도 먼저 발생하면 다시 시도함. (tryScroll은 여러 번 불려도 안전함 -
+    // 이미 찾았으면 그냥 다시 스크롤만 하고, 못 찾았으면 재시도 횟수를 이어서 씀)
+    let visibilityRetryCount = 0;
     const onBecomeVisible = () => {
-      if(document.visibilityState === 'visible' && !visibilityRetryDone){
-        visibilityRetryDone = true;
-        document.removeEventListener('visibilitychange', onBecomeVisible);
+      if(document.visibilityState === 'visible' && visibilityRetryCount < 3){
+        visibilityRetryCount++;
         tryScroll();
       }
     };
-    if(document.visibilityState !== 'visible'){
-      document.addEventListener('visibilitychange', onBecomeVisible);
-    }
+    document.addEventListener('visibilitychange', onBecomeVisible);
+    window.addEventListener('focus', onBecomeVisible);
+    window.addEventListener('pageshow', onBecomeVisible);
 
     setTimeout(tryScroll, 200);
   }
