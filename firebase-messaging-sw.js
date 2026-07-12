@@ -22,12 +22,27 @@ self.addEventListener('activate', (event) => {
 
 const messaging = firebase.messaging();
 
-// notification 필드를 다시 포함해서 보내기로 했어 (삼성인터넷 등 일부 브라우저에서
-// data-only 메시지는 서비스워커가 안 깨어나서 알림 자체가 아예 안 뜨는 경우가 확인됨).
-// 그래서 여기서는 onBackgroundMessage로 직접 showNotification()을 부르지 않고,
-// 브라우저/SDK가 notification 필드를 보고 알아서, 더 안정적으로 띄우게 둠.
-// (직접 또 띄우면 중복으로 두 번 뜸) data는 그대로 알림에 딸려가서
-// 아래 notificationclick에서 꺼내 쓸 수 있음.
+// notification 필드는 삼성인터넷 등에서의 배송 안정성 때문에 계속 포함하지만,
+// 표시 자체는 우리가 직접 해서 tab/itemId 등 이동 정보(data)가 확실히 알림에
+// 붙도록 함 (브라우저 자동 표시에 맡기면 이 정보가 유실되는 게 확인됨).
+messaging.onBackgroundMessage((payload) => {
+  const notif = payload.notification || {};
+  const data = payload.data || {};
+  const title = notif.title || data.title || '백씨스터즈';
+  const options = {
+    body: notif.body || data.body || '',
+    icon: 'icon-180.png',
+    badge: 'favicon-32.png',
+    data: {
+      link: data.link || '/',
+      tab: data.tab || '',
+      itemId: data.itemId || '',
+      commentTs: data.commentTs || '',
+      replyTs: data.replyTs || ''
+    }
+  };
+  self.registration.showNotification(title, options);
+});
 
 // 알림 클릭하면 해당 탭:게시글(:댓글:답글)로 이동.
 // 앱이 이미 열려있으면 postMessage로 직접 "이 탭/게시글로 이동해" 라고 알려주고
