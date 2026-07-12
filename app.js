@@ -37,7 +37,7 @@ db.enablePersistence()
   const ALL_NAMES = ['소정','지수','운빈','운경'];
   // 코드 새로 줄 때마다 이 값 올림 - 홈 화면 맨 아래에 표시돼서, 최신 버전이 실제로
   // 적용됐는지 앱만 열어봐도 바로 확인할 수 있게 해둠.
-  const APP_VERSION = '2026.07.13-6';
+  const APP_VERSION = '2026.07.13-7';
   function colorKeyOf(name){ return PERSON_COLOR[name] || 'yellow'; }
   
   async function searchLocations(query){
@@ -284,6 +284,15 @@ async function uploadPhotos(photosArray, onProgress) {
     if(!author || !PERSON_COLOR[author]) return '';
     return `<span class="author-tag color-${colorKeyOf(author)}">${author}</span>`;
   }
+  // 일정 작성자는 항상 참여자로 침 (본인 글에 참여 버튼 안 눌러도 무조건 참여 중인 걸로 표시)
+  function getDisplayParticipants(item){
+    const explicit = item.participants || [];
+    if(item.author && !explicit.includes(item.author)){
+      return [item.author, ...explicit];
+    }
+    return explicit;
+  }
+
   function escapeHTML(s){
     return (s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   }
@@ -741,7 +750,7 @@ async function uploadPhotos(photosArray, onProgress) {
     const d = fmtDate(item.date);
     const extraLabel = formatScheduleRange(item);
     const hasExtra = extraLabel !== fmtShortDate(item.date);
-    const participants = item.participants || [];
+    const participants = getDisplayParticipants(item);
     const joined = identity && participants.includes(identity);
     return `<div class="item-card ${isPast(item)?'past':''} ${item.isDate?'date-plan-card':''}" data-item-id="${item.id}">
       <div class="date-badge"><div class="day">${d.day}</div><div class="mon">${d.mon}</div></div>
@@ -754,7 +763,7 @@ async function uploadPhotos(photosArray, onProgress) {
           <div class="home-next-participants">
             ${participants.map(p => `<span class="recipient-chip color-${colorKeyOf(p)}">${p}</span>`).join('')}
           </div>
-          ${!isPast(item) ? `<button type="button" class="date-plan-toggle ${joined?'active':''}" data-join-schedule="${item.id}" data-joined="${joined}" style="margin-top:8px;">${joined ? '참여 취소' : '참여할래'}</button>` : ''}
+          ${!isPast(item) && !isMine(item) ? `<button type="button" class="date-plan-toggle ${joined?'active':''}" data-join-schedule="${item.id}" data-joined="${joined}" style="margin-top:8px;">${joined ? '참여 취소' : '참여할래'}</button>` : ''}
         ` : ''}
       </div>
       ${isMine(item) ? `<button class="edit-btn" data-edit-schedule="${item.id}">${pixelEditSVG()}</button>
@@ -1365,7 +1374,7 @@ function renderLetters() {
       const today = new Date(); today.setHours(0,0,0,0);
       if(nextDate){
         const dDiff = Math.round((new Date(nextDate.date+'T00:00:00') - today) / 86400000);
-        const participants = nextDate.participants || [];
+        const participants = getDisplayParticipants(nextDate);
         homeNextDateId = nextDate.id;
         nextDateCard.innerHTML = `
           <div class="home-next-label">💜 다음 데이트</div>
