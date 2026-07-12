@@ -22,25 +22,12 @@ self.addEventListener('activate', (event) => {
 
 const messaging = firebase.messaging();
 
-// 서버(Cloud Functions)에서 data-only로 보내기 때문에, 브라우저가 알림을
-// 자동으로 띄우지 않아. 그래서 여기서 딱 한 번만 직접 띄워.
-messaging.onBackgroundMessage((payload) => {
-  const data = payload.data || {};
-  const title = data.title || '백씨스터즈';
-  const options = {
-    body: data.body || '',
-    icon: 'icon-180.png',
-    badge: 'favicon-32.png',
-    data: {
-      link: data.link || '/',
-      tab: data.tab || '',
-      itemId: data.itemId || '',
-      commentTs: data.commentTs || '',
-      replyTs: data.replyTs || ''
-    }
-  };
-  self.registration.showNotification(title, options);
-});
+// notification 필드를 다시 포함해서 보내기로 했어 (삼성인터넷 등 일부 브라우저에서
+// data-only 메시지는 서비스워커가 안 깨어나서 알림 자체가 아예 안 뜨는 경우가 확인됨).
+// 그래서 여기서는 onBackgroundMessage로 직접 showNotification()을 부르지 않고,
+// 브라우저/SDK가 notification 필드를 보고 알아서, 더 안정적으로 띄우게 둠.
+// (직접 또 띄우면 중복으로 두 번 뜸) data는 그대로 알림에 딸려가서
+// 아래 notificationclick에서 꺼내 쓸 수 있음.
 
 // 알림 클릭하면 해당 탭:게시글(:댓글:답글)로 이동.
 // 앱이 이미 열려있으면 postMessage로 직접 "이 탭/게시글로 이동해" 라고 알려주고
