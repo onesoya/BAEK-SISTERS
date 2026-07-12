@@ -37,7 +37,7 @@ db.enablePersistence()
   const ALL_NAMES = ['소정','지수','운빈','운경'];
   // 코드 새로 줄 때마다 이 값 올림 - 홈 화면 맨 아래에 표시돼서, 최신 버전이 실제로
   // 적용됐는지 앱만 열어봐도 바로 확인할 수 있게 해둠.
-  const APP_VERSION = '2026.07.13-1';
+  const APP_VERSION = '2026.07.13-3';
   function colorKeyOf(name){ return PERSON_COLOR[name] || 'yellow'; }
   
   async function searchLocations(query){
@@ -326,6 +326,58 @@ async function uploadPhotos(photosArray, onProgress) {
   let openCommentSections = new Set();
   let openPostDetails = new Set();
   let openReplyInputs = new Set(); // "col-itemId-commentTs" 형태로 답글 입력창 열림 상태 기억
+
+  // 알림 클릭으로 들어왔을 때 "여기로 스크롤해야 함"을 기억해두는 상태.
+  // 한 번 시도하고 끝내는 게 아니라, 화면이 다시 그려질 때마다(데이터 갱신, 탭 전환,
+  // 화면이 다시 보이게 될 때 등) 계속 확인해서, 목표를 찾으면 그때 스크롤하고 지움.
+  // 재시도 횟수/타이밍에 기대는 것보다 훨씬 끈질기게 작동함.
+  let pendingScrollTarget = null; // { itemId, commentTs, replyTs }
+
+  function scrollToEl(el){
+    setTimeout(() => {
+      el.getBoundingClientRect(); // 스크롤 직전에 강제로 레이아웃 계산을 끝내게 함 (모바일에서 위치 계산이 덜 끝난 채로 스크롤되는 것 방지)
+      el.scrollIntoView({behavior:'smooth', block:'center'});
+      el.classList.add('search-flash');
+      setTimeout(()=> el.classList.remove('search-flash'), 1600);
+    }, 200);
+  }
+
+  function tryConsumePendingScroll(){
+    if(!pendingScrollTarget) return;
+    const { tab, itemId, commentTs, replyTs } = pendingScrollTarget;
+    const card = document.querySelector(`[data-item-id="${itemId}"]`);
+    if(!card) return; // 아직 카드가 화면에 없음 - 다음 기회에 다시 확인됨
+
+    const detail = card.querySelector('.post-detail');
+    if(detail) detail.classList.remove('hidden');
+
+    if(!commentTs){
+      pendingScrollTarget = null;
+      scrollToEl(card);
+      return;
+    }
+
+    const section = card.querySelector('.comment-section');
+    if(section) section.classList.add('active');
+
+    // 답글 알림으로 들어온 거면, 답장하기 편하게 그 댓글의 답글 입력창도 같이 열어줌
+    if(replyTs && tab && TAB_TO_COL[tab]){
+      const replyKey = `${TAB_TO_COL[tab]}-${itemId}-${commentTs}`;
+      const replyRow = document.getElementById(`reply-row-${replyKey}`);
+      if(replyRow){
+        replyRow.classList.add('active');
+        openReplyInputs.add(replyKey);
+      }
+    }
+
+    const anchorTs = replyTs || commentTs;
+    const anchorEl = card.querySelector(`[data-comment-anchor="${anchorTs}"]`);
+    if(anchorEl){
+      pendingScrollTarget = null;
+      scrollToEl(anchorEl);
+    }
+    // 특정 댓글/답글을 아직 못 찾았으면 pendingScrollTarget을 그대로 둬서 다음 기회에 재시도
+  }
 
   // 댓글창 HTML을 그려주는 공통 함수
   function renderCommentsHTML(item, colName) {
@@ -848,6 +900,7 @@ function renderCalendar(){
         : '<div class="empty-state">이 날짜엔 일정이 없어.</div>';
       toggleBtn.classList.add('hidden');
       pastSection.classList.add('hidden');
+      tryConsumePendingScroll();
       return;
     }
     filterNotice.classList.add('hidden');
@@ -856,6 +909,7 @@ function renderCalendar(){
       list.innerHTML = '<div class="empty-state"><span class="empty-emoji">🗓️</span>아직 등록된 일정이 없어.<br>첫 일정을 추가해볼까?</div>';
       toggleBtn.classList.add('hidden');
       pastSection.classList.add('hidden');
+      tryConsumePendingScroll();
       return;
     }
 
@@ -875,6 +929,7 @@ function renderCalendar(){
       toggleBtn.classList.add('hidden');
       pastSection.classList.add('hidden');
     }
+    tryConsumePendingScroll();
   }
 
 
@@ -930,6 +985,7 @@ function renderCalendar(){
         : '<div class="empty-state"><span class="empty-emoji">💭</span>해당하는 위시가 없어.</div>';
       toggleBtn.classList.add('hidden');
       doneSection.classList.add('hidden');
+      tryConsumePendingScroll();
       return;
     }
     const active = wishData.filter(w=>!w.done);
@@ -948,6 +1004,7 @@ function renderCalendar(){
       toggleBtn.classList.add('hidden');
       doneSection.classList.add('hidden');
     }
+    tryConsumePendingScroll();
   }
 
 // 1. 데이트 기록
@@ -1007,6 +1064,7 @@ function renderDateLog() {
       ? '<div class="empty-state"><span class="empty-emoji">💜</span>우리의 첫 데이트를<br>기록해봐.</div>'
       : '<div class="empty-state"><span class="empty-emoji">💜</span>해당하는 기록이 없어.</div>'
   );
+  tryConsumePendingScroll();
 }
 
 // 2. 자유게시판
@@ -1055,6 +1113,7 @@ function renderBoard() {
     list.innerHTML = boardAuthorFilter === 'all'
       ? '<div class="empty-state"><span class="empty-emoji">📋</span>아직 게시글이 없어.<br>자유롭게 남겨봐!</div>'
       : '<div class="empty-state"><span class="empty-emoji">📋</span>해당하는 게시글이 없어.</div>';
+    tryConsumePendingScroll();
     return;
   }
   const pinned = boardData.filter(b => b.pinned);
@@ -1072,6 +1131,7 @@ function renderBoard() {
   if(pinned.length > 0){
     list.insertAdjacentHTML('afterbegin', pinned.map(boardCardHTML).join(''));
   }
+  tryConsumePendingScroll();
 }
 
 // 3. 편지
@@ -1131,6 +1191,7 @@ function renderLetters() {
       ? '<div class="empty-state"><span class="empty-emoji">💌</span>아직 편지가 없어.<br>짧은 편지 한 통 써볼까?</div>'
       : '<div class="empty-state"><span class="empty-emoji">💌</span>해당하는 편지가 없어.</div>'
   );
+  tryConsumePendingScroll();
 }
 
   function findNextSchedule(){
@@ -2751,80 +2812,29 @@ function startWatchers(){
     if(renderMap[tab]) renderMap[tab]();
 
     // 위시/데이트/편지/게시판은 탭을 처음 열 때 그제서야 데이터를 불러오기 시작해서
-    // (지연 로딩) 카드가 화면에 아직 없을 수 있음 -> 몇 번 재시도해서 나타나면 그때 스크롤.
-    // 콜드 스타트(알림으로 앱이 아예 새로 켜지는 경우)는 로그인 확인+데이터 연결까지
-    // 시간이 좀 걸릴 수 있어서 넉넉하게 재시도함.
+    // (지연 로딩) 카드가 화면에 아직 없을 수 있음. "스크롤해야 할 목표"를 전역 상태로
+    // 기록해두고, 렌더될 때마다(각 renderXxx 함수 끝에서) + 화면이 다시 보이게 될 때마다
+    // + 주기적으로(폴링) 계속 확인해서, 목표를 찾는 순간 스크롤함. 콜드 스타트(알림으로
+    // 앱이 아예 새로 켜지는 경우)는 로그인 확인+데이터 연결까지 시간이 걸릴 수 있어서
+    // 이렇게 여러 경로로 끈질기게 재시도하는 게 훨씬 안정적임.
+    pendingScrollTarget = { tab, itemId, commentTs, replyTs };
+    tryConsumePendingScroll(); // 지금 당장 한 번 시도
 
-    // 아이폰 사파리는 알림 눌러서 화면이 막 뜨는 시점엔 아직 "포그라운드"로
-    // 완전히 확정되기 전이라, requestAnimationFrame이 아예 안 걸리는 경우가 있었음
-    // (그래서 스크롤 자체가 실행이 안 됐음). rAF 대신 setTimeout으로 안정적으로 대기.
-    const scrollToEl = (el) => {
-      setTimeout(() => {
-        el.scrollIntoView({behavior:'smooth', block:'center'});
-        el.classList.add('search-flash');
-        setTimeout(()=> el.classList.remove('search-flash'), 1600);
-      }, 200);
-    };
+    document.addEventListener('visibilitychange', tryConsumePendingScroll);
+    window.addEventListener('focus', tryConsumePendingScroll);
+    window.addEventListener('pageshow', tryConsumePendingScroll);
 
-    let attempts = 0;
-    const tryScroll = () => {
-      const card = document.querySelector(`[data-item-id="${itemId}"]`);
-      if(!card){
-        if(attempts < 20){
-          attempts++;
-          setTimeout(tryScroll, 400);
-        }
+    // 위 이벤트들도 다 못 걸리는 상황을 대비해서, 최대 10초 동안 0.5초마다 확인하는
+    // 최후의 안전장치도 같이 둠
+    let pollCount = 0;
+    const pollInterval = setInterval(() => {
+      pollCount++;
+      if(!pendingScrollTarget || pollCount > 20){
+        clearInterval(pollInterval);
         return;
       }
-
-      const detail = card.querySelector('.post-detail');
-      if(detail) detail.classList.remove('hidden');
-
-      if(!commentTs){
-        scrollToEl(card);
-        return;
-      }
-
-      // 댓글/답글 알림인 경우: 댓글창을 펼치고, 그 특정 댓글을 찾을 때까지 재시도.
-      // (방금 막 달린 댓글은 실시간 동기화가 카드보다 살짝 늦게 반영될 수 있어서,
-      //  카드를 찾았다고 그 댓글도 바로 있으리라는 보장이 없음)
-      const section = card.querySelector('.comment-section');
-      if(section) section.classList.add('active');
-
-      const anchorTs = replyTs || commentTs;
-      let anchorAttempts = 0;
-      const tryScrollToAnchor = () => {
-        const anchorEl = card.querySelector(`[data-comment-anchor="${anchorTs}"]`);
-        if(anchorEl){
-          scrollToEl(anchorEl);
-        } else if(anchorAttempts < 15){
-          anchorAttempts++;
-          setTimeout(tryScrollToAnchor, 400);
-        } else {
-          // 끝까지 그 댓글을 못 찾으면(삭제됐거나 등) 게시글로라도 스크롤
-          scrollToEl(card);
-        }
-      };
-      setTimeout(tryScrollToAnchor, 200);
-    };
-
-    // 화면이 아직 백그라운드 상태(안 보이는 상태)면, setTimeout이 늦게 실행되거나
-    // 아예 건너뛰어질 수 있어서(특히 안드로이드), "화면이 실제로 보이게 되는" 걸
-    // 알려줄 수 있는 여러 이벤트(visibilitychange/focus/pageshow)에 전부 걸어두고
-    // 그중 뭐라도 먼저 발생하면 다시 시도함. (tryScroll은 여러 번 불려도 안전함 -
-    // 이미 찾았으면 그냥 다시 스크롤만 하고, 못 찾았으면 재시도 횟수를 이어서 씀)
-    let visibilityRetryCount = 0;
-    const onBecomeVisible = () => {
-      if(document.visibilityState === 'visible' && visibilityRetryCount < 3){
-        visibilityRetryCount++;
-        tryScroll();
-      }
-    };
-    document.addEventListener('visibilitychange', onBecomeVisible);
-    window.addEventListener('focus', onBecomeVisible);
-    window.addEventListener('pageshow', onBecomeVisible);
-
-    setTimeout(tryScroll, 200);
+      tryConsumePendingScroll();
+    }, 500);
   }
   function navigateToSearchResult(result){
     closeSearchOverlay();
