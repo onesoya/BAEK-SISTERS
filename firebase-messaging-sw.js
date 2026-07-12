@@ -40,23 +40,22 @@ self.addEventListener('notificationclick', (event) => {
 
   event.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windowClients) => {
-      for (const client of windowClients) {
-        if ('focus' in client) {
-          client.postMessage({
-            type: 'navigate',
-            tab: data.tab,
-            itemId: data.itemId,
-            commentTs: data.commentTs,
-            replyTs: data.replyTs
-          });
-          client.focus();
-          // client.navigate(link)는 예전엔 안전장치로 넣어뒀는데, 이게 페이지를
-          // 다시 불러오면서 postMessage로 막 끝낸 스크롤 위치를 초기화해버리는 것으로
-          // 의심돼서(탭 이동/게시글 열기는 되는데 스크롤만 안 되는 증상) 제거함.
-          return;
-        }
+      // 이미 화면에 "실제로 보이는" 상태인 창이 있으면, 거긴 postMessage로 부드럽게 이동
+      const visibleClient = windowClients.find((c) => c.visibilityState === 'visible' && 'focus' in c);
+      if (visibleClient) {
+        visibleClient.postMessage({
+          type: 'navigate',
+          tab: data.tab,
+          itemId: data.itemId,
+          commentTs: data.commentTs,
+          replyTs: data.replyTs
+        });
+        return visibleClient.focus();
       }
-      if (clients.openWindow) return clients.openWindow(link);
+      // 화면에 안 보이는 상태(백그라운드에 있거나, 폰이 잠겨있는 등)인 창만 있다면,
+      // 그 창에 focus()/postMessage()만 보내는 걸로는 아이폰에서 반응이 없는 경우가
+      // 확인돼서(안드로이드는 되는데 아이폰만 안 됨), openWindow로 확실하게 깨움.
+      return clients.openWindow(link);
     })
   );
 });
