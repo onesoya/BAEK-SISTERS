@@ -604,6 +604,7 @@ async function uploadPhotos(photosArray, onProgress) {
   let calendarMonth = new Date();
   let calendarFilterDate = null;
   let scheduleFilterNames = []; // 다중선택 (비어있으면 전체 보기)
+  let homeNextDateId = null; // 홈 화면 "다음 데이트" 카드가 가리키는 일정 id
   let wishAuthorFilter = 'all';
   let dateLogAuthorFilter = 'all';
   let boardAuthorFilter = 'all';
@@ -1195,6 +1196,7 @@ function renderLetters() {
       if(nextDate){
         const dDiff = Math.round((new Date(nextDate.date+'T00:00:00') - today) / 86400000);
         const participants = nextDate.participants || [];
+        homeNextDateId = nextDate.id;
         nextDateCard.innerHTML = `
           <div class="home-next-label">💜 다음 데이트</div>
           <div class="home-next-title">${dDiff === 0 ? '오늘이야!' : 'D-' + dDiff} · ${escapeHTML(nextDate.title)}</div>
@@ -1203,6 +1205,7 @@ function renderLetters() {
           </div>
         `;
       } else {
+        homeNextDateId = null;
         nextDateCard.innerHTML = `<div class="home-next-label">💜 다음 데이트</div><div class="home-next-sub">예정된 데이트가 없어</div>`;
       }
     }
@@ -1381,7 +1384,10 @@ function renderLetters() {
     const target = document.getElementById('homeThrowbackCard').dataset.tabTarget;
     if(target) activateTab(target);
   });
-  document.getElementById('homeNextDateCard').addEventListener('click', ()=> activateTab('schedule'));
+  document.getElementById('homeNextDateCard').addEventListener('click', ()=>{
+    if(homeNextDateId) navigateToItem('schedule', homeNextDateId);
+    else activateTab('schedule');
+  });
   window.addEventListener('hashchange', activateTabFromHash);
   if('serviceWorker' in navigator){
     navigator.serviceWorker.addEventListener('message', (event)=>{
