@@ -30,3 +30,38 @@ const messaging = firebase.messaging();
 messaging.onBackgroundMessage(() => {
   // 의도적으로 아무것도 안 함 (SDK 자동 표시에 맡김)
 });
+
+// 알림 표시는 SDK가 자동으로 하지만(위), 클릭했을 때 이동시키는 건 SDK 내부 기능
+// (fcmOptions.link)이 아이폰(사파리)에서는 되는데 삼성인터넷에서는 안 먹히는 게 확인돼서,
+// 클릭 처리만 우리가 직접 함. notificationclick은 누가 띄운 알림이든 상관없이 항상 뜨는
+// 이벤트라서, 이렇게 해도 표시 자체가 중복되진 않음.
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  // Firebase SDK가 알림을 자동 표시할 때, data를 그대로 안 주고
+  // FCM_MSG라는 키 아래에 원본 페이로드를 통째로 감싸서 주는 경우가 있어서 둘 다 확인함.
+  const raw = event.notification.data || {};
+  const data = raw.FCM_MSG && raw.FCM_MSG.data ? raw.FCM_MSG.data : raw;
+  const link = data.link || '/';
+
+  event.waitUntil(
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windowClients) => {
+      for (const client of windowClients) {
+        if ('focus' in client) {
+          client.postMessage({
+            type: 'navigate',
+            tab: data.tab,
+            itemId: data.itemId,
+            commentTs: data.commentTs,
+            replyTs: data.replyTs
+          });
+          client.focus();
+          if ('navigate' in client) {
+            try { client.navigate(link); } catch (e) { /* 무시 */ }
+          }
+          return;
+        }
+      }
+      if (clients.openWindow) return clients.openWindow(link);
+    })
+  );
+});
