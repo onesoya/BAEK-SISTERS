@@ -603,6 +603,10 @@ async function uploadPhotos(photosArray, onProgress) {
   let showPastSchedule = false;
   let calendarMonth = new Date();
   let calendarFilterDate = null;
+  let scheduleFilterNames = []; // 다중선택 (비어있으면 전체 보기)
+  let wishAuthorFilter = 'all';
+  let dateLogAuthorFilter = 'all';
+  let boardAuthorFilter = 'all';
 
 function renderCalendar(){
     const y = calendarMonth.getFullYear(), m = calendarMonth.getMonth();
@@ -617,6 +621,7 @@ function renderCalendar(){
 
     // 화면에 그릴 일정만 필터링하고 정렬 (시작일이 빠른 순 -> 기간이 긴 순)
     const monthEvents = schedule.filter(item => {
+      if (scheduleFilterNames.length > 0 && !scheduleFilterNames.includes(item.author)) return false;
       const itemStart = item.date;
       const itemEnd = item.endDate || item.date;
       return itemStart <= endDateStr && itemEnd >= startDateStr;
@@ -770,8 +775,12 @@ function renderCalendar(){
     const pastSection = document.getElementById('pastScheduleSection');
     const filterNotice = document.getElementById('scheduleFilterNotice');
 
+    const scheduleData = scheduleFilterNames.length > 0
+      ? schedule.filter(item => scheduleFilterNames.includes(item.author))
+      : schedule;
+
     if(calendarFilterDate){
-      const filtered = schedule.filter(item => itemCoversDate(item, calendarFilterDate));
+      const filtered = scheduleData.filter(item => itemCoversDate(item, calendarFilterDate));
       filterNotice.classList.remove('hidden');
       filterNotice.querySelector('span').textContent = `${fmtShortDate(calendarFilterDate)} 일정만 보는 중`;
       list.innerHTML = filtered.length
@@ -783,15 +792,15 @@ function renderCalendar(){
     }
     filterNotice.classList.add('hidden');
 
-    if(schedule.length === 0){
+    if(scheduleData.length === 0){
       list.innerHTML = '<div class="empty-state"><span class="empty-emoji">🗓️</span>아직 등록된 일정이 없어.<br>첫 일정을 추가해볼까?</div>';
       toggleBtn.classList.add('hidden');
       pastSection.classList.add('hidden');
       return;
     }
 
-    const upcoming = schedule.filter(item => !isPast(item));
-    const past = [...schedule.filter(item => isPast(item))].reverse();
+    const upcoming = scheduleData.filter(item => !isPast(item));
+    const past = [...scheduleData.filter(item => isPast(item))].reverse();
 
     list.innerHTML = upcoming.length === 0
       ? '<div class="empty-state"><span class="empty-emoji">✅</span>다가오는 일정이 없어.</div>'
@@ -853,14 +862,18 @@ function renderCalendar(){
     const toggleBtn = document.getElementById('toggleDoneWishBtn');
     const doneSection = document.getElementById('doneWishSection');
 
-    if(wishes.length === 0){
-      list.innerHTML = '<div class="empty-state"><span class="empty-emoji">💭</span>아직 하고 싶은 일이 없어.<br>버킷리스트를 적어볼까?</div>';
+    const wishData = wishAuthorFilter === 'all' ? wishes : wishes.filter(w => w.author === wishAuthorFilter);
+
+    if(wishData.length === 0){
+      list.innerHTML = wishAuthorFilter === 'all'
+        ? '<div class="empty-state"><span class="empty-emoji">💭</span>아직 하고 싶은 일이 없어.<br>버킷리스트를 적어볼까?</div>'
+        : '<div class="empty-state"><span class="empty-emoji">💭</span>해당하는 위시가 없어.</div>';
       toggleBtn.classList.add('hidden');
       doneSection.classList.add('hidden');
       return;
     }
-    const active = wishes.filter(w=>!w.done);
-    const done = wishes.filter(w=>w.done);
+    const active = wishData.filter(w=>!w.done);
+    const done = wishData.filter(w=>w.done);
 
     list.innerHTML = active.length === 0
       ? '<div class="empty-state"><span class="empty-emoji">🎉</span>다 완료했어! 새로운 위시를 적어볼까?</div>'
@@ -923,13 +936,16 @@ function renderCalendar(){
     </div>`;
   }
 function renderDateLog() {
+  const dateLogData = dateLogAuthorFilter === 'all' ? dateLogs : dateLogs.filter(d => d.author === dateLogAuthorFilter);
   renderGroupedByTime(
     'dateLogList',
-    dateLogs,
+    dateLogData,
     item => item.date + 'T00:00:00',
     dateLogCardHTML,
     dateLogExpandedGroups,
-    '<div class="empty-state"><span class="empty-emoji">💜</span>우리의 첫 데이트를<br>기록해봐.</div>'
+    dateLogAuthorFilter === 'all'
+      ? '<div class="empty-state"><span class="empty-emoji">💜</span>우리의 첫 데이트를<br>기록해봐.</div>'
+      : '<div class="empty-state"><span class="empty-emoji">💜</span>해당하는 기록이 없어.</div>'
   );
 }
 
@@ -974,12 +990,15 @@ function renderDateLog() {
   }
 function renderBoard() {
   const list = document.getElementById('boardList');
-  if(boards.length === 0){
-    list.innerHTML = '<div class="empty-state"><span class="empty-emoji">📋</span>아직 게시글이 없어.<br>자유롭게 남겨봐!</div>';
+  const boardData = boardAuthorFilter === 'all' ? boards : boards.filter(b => b.author === boardAuthorFilter);
+  if(boardData.length === 0){
+    list.innerHTML = boardAuthorFilter === 'all'
+      ? '<div class="empty-state"><span class="empty-emoji">📋</span>아직 게시글이 없어.<br>자유롭게 남겨봐!</div>'
+      : '<div class="empty-state"><span class="empty-emoji">📋</span>해당하는 게시글이 없어.</div>';
     return;
   }
-  const pinned = boards.filter(b => b.pinned);
-  const regular = boards.filter(b => !b.pinned);
+  const pinned = boardData.filter(b => b.pinned);
+  const regular = boardData.filter(b => !b.pinned);
 
   renderGroupedByTime(
     'boardList',
@@ -1435,6 +1454,23 @@ function renderLetters() {
 
   // ---- 일정 ----
   let editingScheduleId = null;
+  function renderScheduleFilterRow(){
+    const row = document.getElementById('scheduleFilterRow');
+    row.innerHTML = ALL_NAMES.map(name => `
+      <button type="button" class="chip-toggle color-${colorKeyOf(name)} ${scheduleFilterNames.includes(name)?'active':''}" data-schedule-filter-name="${name}">${name}</button>
+    `).join('');
+    row.querySelectorAll('[data-schedule-filter-name]').forEach(btn=>{
+      btn.addEventListener('click', ()=>{
+        const name = btn.dataset.scheduleFilterName;
+        const idx = scheduleFilterNames.indexOf(name);
+        if(idx === -1) scheduleFilterNames.push(name); else scheduleFilterNames.splice(idx,1);
+        renderScheduleFilterRow();
+        renderCalendar();
+        renderSchedule();
+      });
+    });
+  }
+  renderScheduleFilterRow();
   let schedIsDatePlan = false;
   function setDatePlanToggle(v){
     schedIsDatePlan = v;
@@ -1579,6 +1615,7 @@ function renderLetters() {
   let editingWishId = null;
   let showDoneWishes = false;
   setupPhotoPicker('wishPhotoInput','wishPhotoBtn','wishPhotoPreviewWrap', ()=>pendingWishPhotos, (v)=>{ pendingWishPhotos = v; });
+  setupAuthorFilterRow('wishFilterRow', ()=>wishAuthorFilter, (v)=>{ wishAuthorFilter = v; }, renderWish);
   function startEditWish(item){
     editingWishId = item.id;
     document.getElementById('wishTitle').value = item.title;
@@ -1672,6 +1709,29 @@ function renderLetters() {
   }
   renderParticipantChips('dateLogParticipantRow', dateLogSelectedParticipants);
   setupPhotoPicker('dateLogPhotoInput','dateLogPhotoBtn','dateLogPhotoPreviewWrap', ()=>pendingDateLogPhotos, (v)=>{ pendingDateLogPhotos = v; });
+
+  // 위시/데이트/게시판 공용: 이름 누르면 그 사람 글만, 이미 눌려있으면 다시 눌러서 전체로
+  function setupAuthorFilterRow(rowId, getFilter, setFilter, onChange){
+    const row = document.getElementById(rowId);
+    row.addEventListener('click', (e)=>{
+      const btn = e.target.closest('[data-author-filter]');
+      if(!btn) return;
+      const val = btn.dataset.authorFilter;
+      if(val === 'all'){
+        setFilter('all');
+      } else if(getFilter() === val){
+        setFilter('all');
+      } else {
+        setFilter(val);
+      }
+      const current = getFilter();
+      row.querySelectorAll('[data-author-filter]').forEach(b=>{
+        b.classList.toggle('active', b.dataset.authorFilter === current);
+      });
+      onChange();
+    });
+  }
+  setupAuthorFilterRow('dateLogFilterRow', ()=>dateLogAuthorFilter, (v)=>{ dateLogAuthorFilter = v; }, renderDateLog);
   document.getElementById('dateLogRangeToggleBtn').addEventListener('click', ()=>{
     const row = document.getElementById('dateLogEndDateRow');
     const willShow = row.classList.contains('hidden');
@@ -1864,6 +1924,7 @@ function renderLetters() {
   let editingBoardId = null;
   let boardPinEnabled = false;
   setupPhotoPicker('boardPhotoInput','boardPhotoBtn','boardPhotoPreviewWrap', ()=>pendingBoardPhotos, (v)=>{ pendingBoardPhotos = v; });
+  setupAuthorFilterRow('boardFilterRow', ()=>boardAuthorFilter, (v)=>{ boardAuthorFilter = v; }, renderBoard);
   document.getElementById('boardPinToggle').addEventListener('click', ()=>{
     boardPinEnabled = !boardPinEnabled;
     document.getElementById('boardPinToggle').classList.toggle('active', boardPinEnabled);
@@ -2548,9 +2609,13 @@ function startWatchers(){
 
   document.querySelectorAll('#letterFilterRow .filter-chip').forEach(btn=>{
     btn.addEventListener('click', ()=>{
-      document.querySelectorAll('#letterFilterRow .filter-chip').forEach(b=>b.classList.remove('active'));
-      btn.classList.add('active');
-      letterFilterTarget = btn.dataset.letterFilter;
+      const val = btn.dataset.letterFilter;
+      letterFilterTarget = (val === 'all')
+        ? 'all'
+        : (letterFilterTarget === val ? 'all' : val);
+      document.querySelectorAll('#letterFilterRow .filter-chip').forEach(b=>{
+        b.classList.toggle('active', b.dataset.letterFilter === letterFilterTarget);
+      });
       renderLetters();
     });
   });

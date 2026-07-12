@@ -53,6 +53,7 @@
 
     <section class="tab-panel" id="panel-schedule">
       <div class="section-title">일정 공유</div>
+      <div class="chip-toggle-row" id="scheduleFilterRow" style="margin-bottom:12px;"></div>
       <div class="calendar-card" id="scheduleCalendar"></div>
       <div class="add-card">
         <div class="datetime-row">
@@ -122,6 +123,13 @@
         </div>
         <button class="cancel-edit-btn hidden" id="wishCancelBtn">수정 취소</button>
       </div>
+      <div class="filter-chip-row" id="wishFilterRow">
+        <button class="filter-chip active" data-author-filter="all">전체</button>
+        <button class="filter-chip filter-chip-narrow color-yellow" data-author-filter="소정">소정</button>
+        <button class="filter-chip filter-chip-narrow color-red" data-author-filter="지수">지수</button>
+        <button class="filter-chip filter-chip-narrow color-green" data-author-filter="운빈">운빈</button>
+        <button class="filter-chip filter-chip-narrow color-blue" data-author-filter="운경">운경</button>
+      </div>
       <div id="wishList"></div>
       <button class="toggle-past-btn hidden" id="toggleDoneWishBtn">완료한 위시 보기</button>
       <div class="hidden" id="doneWishSection" style="margin-top:10px;"></div>
@@ -179,6 +187,13 @@
           <button class="btn" id="dateLogAddBtn" style="width:100%;">기록하기</button>
         </div>
         <button class="cancel-edit-btn hidden" id="dateLogCancelBtn">수정 취소</button>
+      </div>
+      <div class="filter-chip-row" id="dateLogFilterRow">
+        <button class="filter-chip active" data-author-filter="all">전체</button>
+        <button class="filter-chip filter-chip-narrow color-yellow" data-author-filter="소정">소정</button>
+        <button class="filter-chip filter-chip-narrow color-red" data-author-filter="지수">지수</button>
+        <button class="filter-chip filter-chip-narrow color-green" data-author-filter="운빈">운빈</button>
+        <button class="filter-chip filter-chip-narrow color-blue" data-author-filter="운경">운경</button>
       </div>
       <div class="list" id="dateLogList"></div>
     </section>
@@ -239,6 +254,13 @@
           <button class="btn" id="boardAddBtn" style="width:100%;">게시하기</button>
         </div>
         <button class="cancel-edit-btn hidden" id="boardCancelBtn">수정 취소</button>
+      </div>
+      <div class="filter-chip-row" id="boardFilterRow">
+        <button class="filter-chip active" data-author-filter="all">전체</button>
+        <button class="filter-chip filter-chip-narrow color-yellow" data-author-filter="소정">소정</button>
+        <button class="filter-chip filter-chip-narrow color-red" data-author-filter="지수">지수</button>
+        <button class="filter-chip filter-chip-narrow color-green" data-author-filter="운빈">운빈</button>
+        <button class="filter-chip filter-chip-narrow color-blue" data-author-filter="운경">운경</button>
       </div>
       <div id="boardList"></div>
     </section>
