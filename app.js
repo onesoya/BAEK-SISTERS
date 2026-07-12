@@ -37,7 +37,7 @@ db.enablePersistence()
   const ALL_NAMES = ['소정','지수','운빈','운경'];
   // 코드 새로 줄 때마다 이 값 올림 - 홈 화면 맨 아래에 표시돼서, 최신 버전이 실제로
   // 적용됐는지 앱만 열어봐도 바로 확인할 수 있게 해둠.
-  const APP_VERSION = '2026.07.13-5';
+  const APP_VERSION = '2026.07.13-6';
   function colorKeyOf(name){ return PERSON_COLOR[name] || 'yellow'; }
   
   async function searchLocations(query){
@@ -350,6 +350,40 @@ async function uploadPhotos(photosArray, onProgress) {
       clearInterval(scrollPollInterval);
       scrollPollInterval = null;
     }
+  }
+
+  // 알림 클릭 등으로 화면이 예상치 못하게 새로고침돼도 작성 중이던 글이 안 날아가게,
+  // 입력할 때마다 브라우저에 조용히 임시저장해두고 화면이 새로 열릴 때 복원함.
+  function setupDraftAutosave(storageKey, fieldIds){
+    try{
+      const saved = localStorage.getItem(storageKey);
+      if(saved){
+        const data = JSON.parse(saved);
+        fieldIds.forEach(id => {
+          const el = document.getElementById(id);
+          if(el && data[id]){
+            el.value = data[id];
+            if(el._autoGrowResize) el._autoGrowResize();
+          }
+        });
+      }
+    }catch(e){ /* 무시 */ }
+
+    const save = () => {
+      const data = {};
+      fieldIds.forEach(id => {
+        const el = document.getElementById(id);
+        if(el) data[id] = el.value;
+      });
+      try{ localStorage.setItem(storageKey, JSON.stringify(data)); }catch(e){ /* 무시 */ }
+    };
+    fieldIds.forEach(id => {
+      const el = document.getElementById(id);
+      if(el) el.addEventListener('input', save);
+    });
+  }
+  function clearDraftAutosave(storageKey){
+    try{ localStorage.removeItem(storageKey); }catch(e){ /* 무시 */ }
   }
 
   function tryConsumePendingScroll(){
@@ -1619,6 +1653,7 @@ function renderLetters() {
 
   // ---- 일정 ----
   let editingScheduleId = null;
+  setupDraftAutosave('draft_schedule', ['schedTitle', 'schedMemo']);
   function renderScheduleFilterRow(){
     const row = document.getElementById('scheduleFilterRow');
     row.innerHTML = `<button type="button" class="chip-toggle ${scheduleFilterNames.length===0?'active':''}" data-schedule-filter-all="1">전체</button>` +
@@ -1700,6 +1735,7 @@ function renderLetters() {
     document.getElementById('schedDate').value = localDateStr();
     document.getElementById('schedAddBtn').textContent = '추가하기';
     document.getElementById('schedCancelBtn').classList.add('hidden');
+    clearDraftAutosave('draft_schedule');
   }
   document.getElementById('schedCancelBtn').addEventListener('click', resetScheduleForm);
   document.getElementById('schedAddBtn').addEventListener('click', async ()=>{
@@ -1788,6 +1824,7 @@ function renderLetters() {
   let showDoneWishes = false;
   setupPhotoPicker('wishPhotoInput','wishPhotoBtn','wishPhotoPreviewWrap', ()=>pendingWishPhotos, (v)=>{ pendingWishPhotos = v; });
   setupAuthorFilterRow('wishFilterRow', ()=>wishAuthorFilter, (v)=>{ wishAuthorFilter = v; }, renderWish);
+  setupDraftAutosave('draft_wish', ['wishTitle', 'wishBody', 'wishLink']);
   function startEditWish(item){
     editingWishId = item.id;
     document.getElementById('wishTitle').value = item.title;
@@ -1812,6 +1849,7 @@ function renderLetters() {
     renderPhotoPreviewGrid('wishPhotoPreviewWrap', ()=>pendingWishPhotos, (v)=>{ pendingWishPhotos = v; });
     document.getElementById('wishAddBtn').textContent = '게시하기';
     document.getElementById('wishCancelBtn').classList.add('hidden');
+    clearDraftAutosave('draft_wish');
   }
   document.getElementById('wishCancelBtn').addEventListener('click', resetWishForm);
     document.getElementById('wishAddBtn').addEventListener('click', async () => {
@@ -1865,6 +1903,7 @@ function renderLetters() {
   // ---- 데이트 기록 ----
   let editingDatelogId = null;
   let dateLogSelectedParticipants = [];
+  setupDraftAutosave('draft_datelog', ['dateLogTitle', 'dateLogMemo']);
   function renderParticipantChips(containerId, selectedArr){
     const row = document.getElementById(containerId);
     row.innerHTML = ALL_NAMES.map(name => `
@@ -1974,6 +2013,7 @@ function renderLetters() {
     renderParticipantChips('dateLogParticipantRow', dateLogSelectedParticipants);
     document.getElementById('dateLogAddBtn').textContent = '기록하기';
     document.getElementById('dateLogCancelBtn').classList.add('hidden');
+    clearDraftAutosave('draft_datelog');
   }
   document.getElementById('dateLogLocation').addEventListener('input', ()=>{
     pendingDateLogGeo = null;
@@ -2097,6 +2137,7 @@ function renderLetters() {
   let boardPinEnabled = false;
   setupPhotoPicker('boardPhotoInput','boardPhotoBtn','boardPhotoPreviewWrap', ()=>pendingBoardPhotos, (v)=>{ pendingBoardPhotos = v; });
   setupAuthorFilterRow('boardFilterRow', ()=>boardAuthorFilter, (v)=>{ boardAuthorFilter = v; }, renderBoard);
+  setupDraftAutosave('draft_board', ['boardTitle', 'boardBody']);
   document.getElementById('boardPinToggle').addEventListener('click', ()=>{
     boardPinEnabled = !boardPinEnabled;
     document.getElementById('boardPinToggle').classList.toggle('active', boardPinEnabled);
@@ -2128,6 +2169,7 @@ function renderLetters() {
     document.getElementById('boardPinToggle').classList.remove('active');
     document.getElementById('boardAddBtn').textContent = '게시하기';
     document.getElementById('boardCancelBtn').classList.add('hidden');
+    clearDraftAutosave('draft_board');
   }
   document.getElementById('boardCancelBtn').addEventListener('click', resetBoardForm);
 
@@ -2154,6 +2196,7 @@ function renderLetters() {
   let letterSelectedRecipients = [];
   renderParticipantChips('letterRecipientRow', letterSelectedRecipients);
   setupPhotoPicker('letterPhotoInput','letterPhotoBtn','letterPhotoPreviewWrap', ()=>pendingLetterPhotos, (v)=>{ pendingLetterPhotos = v; });
+  setupDraftAutosave('draft_letter', ['letterTitle', 'letterBody']);
 
   function setLetterLockToggleState(show){
     document.getElementById('letterUnlockDateRow').classList.toggle('hidden', !show);
@@ -2205,6 +2248,7 @@ function renderLetters() {
     setLetterLockToggleState(false);
     document.getElementById('letterAddBtn').textContent = '편지 보내기';
     document.getElementById('letterCancelBtn').classList.add('hidden');
+    clearDraftAutosave('draft_letter');
   }
   document.getElementById('letterCancelBtn').addEventListener('click', resetLetterForm);
     
