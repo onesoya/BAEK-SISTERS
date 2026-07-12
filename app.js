@@ -2823,6 +2823,8 @@ function startWatchers(){
     document.querySelector('.app-shell').style.visibility = 'hidden';
 
     firebase.auth().onAuthStateChanged(user=>{
+      const splash = document.getElementById('splashScreen');
+      if(splash) splash.classList.add('hidden');
       if(user && EMAIL_MAP[user.email]){
         loginInProgress = false;
         identity = EMAIL_MAP[user.email];

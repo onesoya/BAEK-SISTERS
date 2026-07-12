@@ -44,6 +44,21 @@
     padding-bottom:88px;
   }
 
+  .splash-screen{
+    position:fixed; inset:0; z-index:999;
+    background:var(--cream);
+    display:flex; flex-direction:column; align-items:center; justify-content:center; gap:14px;
+  }
+  .splash-screen.hidden{ display:none; }
+  .splash-title{
+    font-family:'DungGeunMo',sans-serif; font-size:26px; color:var(--plum);
+  }
+  .splash-loading{
+    font-family:'DungGeunMo',sans-serif; font-size:14px; color:var(--pink);
+    animation: splashPulse 1.2s ease-in-out infinite;
+  }
+  @keyframes splashPulse{ 0%,100%{ opacity:0.4; } 50%{ opacity:1; } }
+
   .app-header{
     position:sticky;
     top:0;

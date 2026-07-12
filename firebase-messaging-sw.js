@@ -10,6 +10,16 @@ firebase.initializeApp({
   appId: "1:446206353039:web:d4e780fa2f8873dd2f5afa"
 });
 
+// 서비스워커 새 버전이 배포되면, 다른 탭을 안 닫아도 바로 이 버전으로 교체되게 함.
+// (이게 없으면 브라우저를 완전히 껐다 켜기 전까진 예전 버전이 계속 알림을 처리해서,
+//  코드를 고쳐도 각자 기기에 그 수정이 안 들어간 것처럼 보일 수 있음)
+self.addEventListener('install', () => {
+  self.skipWaiting();
+});
+self.addEventListener('activate', (event) => {
+  event.waitUntil(clients.claim());
+});
+
 const messaging = firebase.messaging();
 
 // 서버(Cloud Functions)에서 data-only로 보내기 때문에, 브라우저가 알림을
