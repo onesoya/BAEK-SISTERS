@@ -37,7 +37,7 @@ db.enablePersistence()
   const ALL_NAMES = ['소정','지수','운빈','운경'];
   // 코드 새로 줄 때마다 이 값 올림 - 홈 화면 맨 아래에 표시돼서, 최신 버전이 실제로
   // 적용됐는지 앱만 열어봐도 바로 확인할 수 있게 해둠.
-  const APP_VERSION = '2026.07.13-7';
+  const APP_VERSION = '2026.07.13-8';
   function colorKeyOf(name){ return PERSON_COLOR[name] || 'yellow'; }
   
   async function searchLocations(query){
@@ -434,7 +434,15 @@ async function uploadPhotos(photosArray, onProgress) {
 
   // 화면이 다시 보이게 되는 걸 알려주는 이벤트들 - 여러 번 호출부에서 등록하지 않고
   // 여기서 한 번만 전역으로 등록해둠 (기명 함수라 중복 등록은 원래도 안 됐지만, 구조상 더 깔끔하게)
-  document.addEventListener('visibilitychange', tryConsumePendingScroll);
+  document.addEventListener('visibilitychange', () => {
+    if(document.visibilityState === 'visible' && navigator.serviceWorker && navigator.serviceWorker.controller){
+      // 자는 동안(폰 잠금 등) 놓친 알림이 있는지 서비스워커에게 물어봄.
+      // 있으면 서비스워커가 postMessage로 돌려주고, 그건 이미 등록된 message
+      // 리스너(navigate 타입 처리)가 알아서 받아서 처리함.
+      navigator.serviceWorker.controller.postMessage({ type: 'CHECK_PENDING_NOTIF' });
+    }
+    tryConsumePendingScroll();
+  });
   window.addEventListener('focus', tryConsumePendingScroll);
   window.addEventListener('pageshow', tryConsumePendingScroll);
 

@@ -27,6 +27,58 @@ messaging.onBackgroundMessage(() => {
   // 의도적으로 아무것도 안 함 (SDK 자동 표시에 맡김)
 });
 
+// ---- 놓친 알림을 기억해두는 저장소 (IndexedDB) ----
+// 서비스워커의 일반 변수는 브라우저가 아무 때나 서비스워커를 종료했다가 재시작하면
+// 같이 사라짐 (특히 폰이 잠긴 채로 시간이 좀 지나면 이런 일이 흔함). 그래서 재시작돼도
+// 안 사라지는 IndexedDB에 저장해둠 - 아이폰이 잠금 상태에서 알림을 눌러 postMessage가
+// 씹히더라도, 나중에 앱이 화면에 다시 보일 때 "혹시 놓친 거 있어?"라고 물어보면 꺼내줌.
+const NOTIF_DB_NAME = 'baek-sisters-notif';
+const NOTIF_STORE = 'pending';
+
+function openNotifDB() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(NOTIF_DB_NAME, 1);
+    req.onupgradeneeded = () => {
+      if (!req.result.objectStoreNames.contains(NOTIF_STORE)) {
+        req.result.createObjectStore(NOTIF_STORE);
+      }
+    };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+async function savePendingNotif(payload) {
+  try {
+    const db = await openNotifDB();
+    await new Promise((resolve, reject) => {
+      const tx = db.transaction(NOTIF_STORE, 'readwrite');
+      tx.objectStore(NOTIF_STORE).put(payload, 'latest');
+      tx.oncomplete = resolve;
+      tx.onerror = () => reject(tx.error);
+    });
+  } catch (e) { /* 무시 - 저장 실패해도 기존 postMessage/navigate 경로는 그대로 시도됨 */ }
+}
+
+async function readAndClearPendingNotif() {
+  try {
+    const db = await openNotifDB();
+    return await new Promise((resolve, reject) => {
+      const tx = db.transaction(NOTIF_STORE, 'readwrite');
+      const store = tx.objectStore(NOTIF_STORE);
+      const getReq = store.get('latest');
+      getReq.onsuccess = () => {
+        const value = getReq.result;
+        store.delete('latest');
+        resolve(value || null);
+      };
+      getReq.onerror = () => reject(getReq.error);
+    });
+  } catch (e) {
+    return null;
+  }
+}
+
 // 알림 클릭하면 해당 탭:게시글(:댓글:답글)로 이동.
 // 앱이 이미 열려있으면 postMessage로 직접 "이 탭/게시글로 이동해" 라고 알려주고,
 // 앱이 안 열려있으면 그냥 해시가 붙은 주소로 새로 열어.
@@ -37,20 +89,25 @@ self.addEventListener('notificationclick', (event) => {
   const raw = event.notification.data || {};
   const data = raw.FCM_MSG && raw.FCM_MSG.data ? raw.FCM_MSG.data : raw;
   const link = data.link || '/';
-
   const isIOS = /iPad|iPhone|iPod/.test(self.navigator.userAgent);
 
+  const navPayload = {
+    type: 'navigate',
+    tab: data.tab,
+    itemId: data.itemId,
+    commentTs: data.commentTs,
+    replyTs: data.replyTs
+  };
+
   event.waitUntil(
-    clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windowClients) => {
+    (async () => {
+      // 아이폰은 IndexedDB에도 남겨둠 (잠금 상태에서 postMessage가 씹혀도 나중에 복구 가능하도록)
+      if (isIOS) await savePendingNotif(navPayload);
+
+      const windowClients = await clients.matchAll({ type: 'window', includeUncontrolled: true });
       for (const client of windowClients) {
         if ('focus' in client) {
-          client.postMessage({
-            type: 'navigate',
-            tab: data.tab,
-            itemId: data.itemId,
-            commentTs: data.commentTs,
-            replyTs: data.replyTs
-          });
+          client.postMessage(navPayload);
           client.focus();
           // 아이폰은 폰이 잠겨있다가 그대로 알림을 눌렀을 때, focus()/postMessage()만으로는
           // 완전히 반응이 없는 경우가 확인됨(안드로이드는 이걸로 잘 됨). 아이폰에서만
@@ -61,7 +118,21 @@ self.addEventListener('notificationclick', (event) => {
           return;
         }
       }
-      if (clients.openWindow) return clients.openWindow(link);
-    })
+      return clients.openWindow(link);
+    })()
   );
+});
+
+// 앱이 "혹시 자는 동안 놓친 알림 있어?"라고 물어보면(CHECK_PENDING_NOTIF),
+// IndexedDB에 저장해둔 게 있으면 꺼내서 돌려줌
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'CHECK_PENDING_NOTIF') {
+    event.waitUntil(
+      readAndClearPendingNotif().then((pending) => {
+        if (pending && event.source) {
+          event.source.postMessage(pending);
+        }
+      })
+    );
+  }
 });
