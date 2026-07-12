@@ -203,6 +203,7 @@
   .home-throwback-photo{ width:56px; height:56px; border-radius:9px; object-fit:cover; flex-shrink:0; }
   .home-throwback-label{ font-size:12px; color:#8A5A6A; margin-bottom:3px; }
   .home-throwback-title{ font-family:'DungGeunMo',sans-serif; font-size:16px; color:var(--plum); }
+  .app-version-tag{ text-align:center; font-size:10px; color:#C7BED6; margin-top:16px; padding-bottom:4px; }
 
   .section-title{
     font-family:'DungGeunMo',sans-serif;

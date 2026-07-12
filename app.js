@@ -35,6 +35,9 @@ db.enablePersistence()
   // 4인 신원 체계
   const PERSON_COLOR = { '소정':'yellow', '지수':'red', '운빈':'green', '운경':'blue' };
   const ALL_NAMES = ['소정','지수','운빈','운경'];
+  // 코드 새로 줄 때마다 이 값 올림 - 홈 화면 맨 아래에 표시돼서, 최신 버전이 실제로
+  // 적용됐는지 앱만 열어봐도 바로 확인할 수 있게 해둠.
+  const APP_VERSION = '2026.07.13-1';
   function colorKeyOf(name){ return PERSON_COLOR[name] || 'yellow'; }
   
   async function searchLocations(query){
@@ -2922,6 +2925,8 @@ function startWatchers(){
   });
 
   function init(){
+    const versionTag = document.getElementById('appVersionTag');
+    if(versionTag) versionTag.textContent = `v${APP_VERSION}`;
     renderHome();
     renderCalendar();
     document.getElementById('schedDate').value = localDateStr();
