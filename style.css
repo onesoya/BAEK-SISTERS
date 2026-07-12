@@ -713,6 +713,8 @@
   }
   .reply-list{ margin-top:6px; margin-left:18px; display:flex; flex-direction:column; gap:6px; }
   .comment-item.reply-item{ background:#F7F0EE; padding:7px 9px; }
+  .comment-item.comment-deleted{ background:#F5F2F4; }
+  .comment-item.comment-deleted .c-deleted-text{ color:#B0A8BE; font-style:italic; font-size:13px; }
   .reply-input-row{
     display:none; gap:6px; margin-top:8px; margin-left:18px;
   }

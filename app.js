@@ -285,9 +285,10 @@ async function uploadPhotos(photosArray, onProgress) {
     return (s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   }
   // 댓글 버튼 옆 숫자용 - 댓글 개수 + 그 안의 답글 개수까지 다 합쳐서 셈
+  // (단, "삭제된 댓글이야"로 표시되는 소프트 삭제된 댓글 자체는 개수에서 빠짐 - 그 밑의 답글은 그대로 셈)
   function totalCommentCount(comments){
     const list = comments || [];
-    return list.reduce((sum, c) => sum + 1 + ((c.replies || []).length), 0);
+    return list.reduce((sum, c) => sum + (c.deleted ? 0 : 1) + ((c.replies || []).length), 0);
   }
   function pixelHeartSVG(filled, size, colorOverride){
     size = size || 15;
@@ -341,6 +342,16 @@ async function uploadPhotos(photosArray, onProgress) {
           <div class="c-time">${formatDateTimeKR(r.ts)}</div>
         </div>
       `).join('');
+
+      // 삭제된 댓글 - 답글은 그대로 살려두고, 댓글 자리엔 안내 문구만
+      if (c.deleted) {
+        return `
+        <div class="comment-item comment-deleted" data-comment-anchor="${c.ts}">
+          <span class="c-text c-deleted-text">삭제된 댓글이야</span>
+          ${replies.length > 0 ? `<div class="reply-list">${repliesHTML}</div>` : ''}
+        </div>
+      `;
+      }
 
       return `
       <div class="comment-item" data-comment-anchor="${c.ts}">
@@ -2496,7 +2507,6 @@ function startWatchers(){
     // 3. 내 댓글 삭제
     const delBtn = e.target.closest('.c-del');
     if (delBtn) {
-      if (!confirm('이 댓글을 지울까?')) return;
       const col = delBtn.dataset.commentCol;
       const id = delBtn.dataset.commentId;
       const ts = Number(delBtn.dataset.commentTs);
@@ -2513,7 +2523,32 @@ function startWatchers(){
       
       // 삭제할 정확한 댓글 객체 찾기 (시간과 작성자가 동일한 것)
       const targetComment = (item.comments || []).find(c => c.ts === ts && c.author === identity);
-      if (targetComment) {
+      if (!targetComment) return;
+
+      const hasReplies = (targetComment.replies || []).length > 0;
+      const confirmMsg = hasReplies
+        ? '답글은 삭제되지 않아. 이 댓글을 지울까?'
+        : '이 댓글을 지울까?';
+      if (!confirm(confirmMsg)) return;
+
+      if (hasReplies) {
+        // 답글이 있으면 완전히 지우지 않고, 자리만 "삭제된 댓글이야"로 남겨서 답글을 보존
+        (async () => {
+          try {
+            const ref = db.collection(col).doc(id);
+            const snap = await ref.get();
+            const comments = (snap.data().comments || []).map(c => {
+              if (c.ts === ts && c.author === identity) {
+                return { ts: c.ts, author: c.author, deleted: true, replies: c.replies || [] };
+              }
+              return c;
+            });
+            await ref.update({ comments });
+          } catch (err) {
+            console.error('댓글 삭제 실패:', err);
+          }
+        })();
+      } else {
         db.collection(col).doc(id).update({
           comments: firebase.firestore.FieldValue.arrayRemove(targetComment)
         }).catch(err => console.error('댓글 삭제 실패:', err));
@@ -2578,12 +2613,16 @@ function startWatchers(){
         try {
           const ref = db.collection(col).doc(id);
           const snap = await ref.get();
-          const comments = (snap.data().comments || []).map(c => {
-            if (c.ts === parentTs) {
-              return { ...c, replies: (c.replies || []).filter(r => !(r.ts === replyTs && r.author === identity)) };
-            }
-            return c;
-          });
+          const comments = (snap.data().comments || [])
+            .map(c => {
+              if (c.ts === parentTs) {
+                const newReplies = (c.replies || []).filter(r => !(r.ts === replyTs && r.author === identity));
+                return { ...c, replies: newReplies };
+              }
+              return c;
+            })
+            // 이미 "삭제된 댓글이야"로 남아있던 자리인데 답글까지 0개가 되면, 그 자리 자체를 완전히 없앰
+            .filter(c => !(c.deleted && (c.replies || []).length === 0));
           await ref.update({ comments });
         } catch (err) {
           console.error('답글 삭제 실패:', err);
