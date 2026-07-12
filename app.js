@@ -2685,31 +2685,49 @@ function startWatchers(){
     let attempts = 0;
     const tryScroll = () => {
       const card = document.querySelector(`[data-item-id="${itemId}"]`);
-      if(card){
-        const detail = card.querySelector('.post-detail');
-        if(detail) detail.classList.remove('hidden');
+      if(!card){
+        if(attempts < 10){
+          attempts++;
+          setTimeout(tryScroll, 300);
+        }
+        return;
+      }
 
-        if(commentTs){
-          const section = card.querySelector('.comment-section');
-          if(section) section.classList.add('active');
-          // 댓글창이 펼쳐질 시간을 살짝 준 다음 그 댓글(또는 답글)로 스크롤
-          setTimeout(()=>{
-            const anchorTs = replyTs || commentTs;
-            const anchorEl = card.querySelector(`[data-comment-anchor="${anchorTs}"]`);
-            const target = anchorEl || card;
-            target.scrollIntoView({behavior:'smooth', block:'center'});
-            target.classList.add('search-flash');
-            setTimeout(()=> target.classList.remove('search-flash'), 1600);
-          }, 120);
+      const detail = card.querySelector('.post-detail');
+      if(detail) detail.classList.remove('hidden');
+
+      if(!commentTs){
+        card.scrollIntoView({behavior:'smooth', block:'center'});
+        card.classList.add('search-flash');
+        setTimeout(()=> card.classList.remove('search-flash'), 1600);
+        return;
+      }
+
+      // 댓글/답글 알림인 경우: 댓글창을 펼치고, 그 특정 댓글을 찾을 때까지 재시도.
+      // (방금 막 달린 댓글은 실시간 동기화가 카드보다 살짝 늦게 반영될 수 있어서,
+      //  카드를 찾았다고 그 댓글도 바로 있으리라는 보장이 없음)
+      const section = card.querySelector('.comment-section');
+      if(section) section.classList.add('active');
+
+      const anchorTs = replyTs || commentTs;
+      let anchorAttempts = 0;
+      const tryScrollToAnchor = () => {
+        const anchorEl = card.querySelector(`[data-comment-anchor="${anchorTs}"]`);
+        if(anchorEl){
+          anchorEl.scrollIntoView({behavior:'smooth', block:'center'});
+          anchorEl.classList.add('search-flash');
+          setTimeout(()=> anchorEl.classList.remove('search-flash'), 1600);
+        } else if(anchorAttempts < 8){
+          anchorAttempts++;
+          setTimeout(tryScrollToAnchor, 300);
         } else {
+          // 끝까지 그 댓글을 못 찾으면(삭제됐거나 등) 게시글로라도 스크롤
           card.scrollIntoView({behavior:'smooth', block:'center'});
           card.classList.add('search-flash');
           setTimeout(()=> card.classList.remove('search-flash'), 1600);
         }
-      } else if(attempts < 10){
-        attempts++;
-        setTimeout(tryScroll, 300);
-      }
+      };
+      setTimeout(tryScrollToAnchor, 150);
     };
     setTimeout(tryScroll, 150);
   }
