@@ -2804,6 +2804,22 @@ function startWatchers(){
       };
       setTimeout(tryScrollToAnchor, 200);
     };
+
+    // 화면이 아직 백그라운드 상태(안 보이는 상태)면, setTimeout이 늦게 실행되거나
+    // 아예 건너뛰어질 수 있어서(특히 안드로이드), 실제로 화면이 "보이는 상태"가 되는
+    // 순간을 직접 감지해서 그때 확실하게 다시 시도하는 안전장치를 추가함.
+    let visibilityRetryDone = false;
+    const onBecomeVisible = () => {
+      if(document.visibilityState === 'visible' && !visibilityRetryDone){
+        visibilityRetryDone = true;
+        document.removeEventListener('visibilitychange', onBecomeVisible);
+        tryScroll();
+      }
+    };
+    if(document.visibilityState !== 'visible'){
+      document.addEventListener('visibilitychange', onBecomeVisible);
+    }
+
     setTimeout(tryScroll, 200);
   }
   function navigateToSearchResult(result){
