@@ -1383,6 +1383,14 @@ function renderLetters() {
   });
   document.getElementById('homeNextDateCard').addEventListener('click', ()=> activateTab('schedule'));
   window.addEventListener('hashchange', activateTabFromHash);
+  if('serviceWorker' in navigator){
+    navigator.serviceWorker.addEventListener('message', (event)=>{
+      if(event.data && event.data.type === 'navigate' && event.data.tab){
+        if(event.data.itemId) navigateToItem(event.data.tab, event.data.itemId);
+        else activateTab(event.data.tab);
+      }
+    });
+  }
 
   function updateIdentityChip(){
     document.getElementById('identityChip').textContent = identity ? `나는 ${identity}` : '나는 ...';
@@ -2486,6 +2494,7 @@ function startWatchers(){
 
   function navigateToItem(tab, itemId){
     activateTab(tab);
+    openPostDetails.add(itemId); // 데이터가 아직 안 왔어도, 오면 열려있도록 미리 기억해둠
 
     let item = null;
     if(tab === 'schedule') item = schedule.find(x=>x.id===itemId);
@@ -2518,7 +2527,10 @@ function startWatchers(){
     };
     if(renderMap[tab]) renderMap[tab]();
 
-    setTimeout(()=>{
+    // 위시/데이트/편지/게시판은 탭을 처음 열 때 그제서야 데이터를 불러오기 시작해서
+    // (지연 로딩) 카드가 화면에 아직 없을 수 있음 -> 몇 번 재시도해서 나타나면 그때 스크롤
+    let attempts = 0;
+    const tryScroll = () => {
       const card = document.querySelector(`[data-item-id="${itemId}"]`);
       if(card){
         const detail = card.querySelector('.post-detail');
@@ -2526,8 +2538,12 @@ function startWatchers(){
         card.scrollIntoView({behavior:'smooth', block:'center'});
         card.classList.add('search-flash');
         setTimeout(()=> card.classList.remove('search-flash'), 1600);
+      } else if(attempts < 10){
+        attempts++;
+        setTimeout(tryScroll, 300);
       }
-    }, 150);
+    };
+    setTimeout(tryScroll, 150);
   }
   function navigateToSearchResult(result){
     closeSearchOverlay();

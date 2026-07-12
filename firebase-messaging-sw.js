@@ -21,20 +21,25 @@ messaging.onBackgroundMessage((payload) => {
     body: data.body || '',
     icon: 'icon-180.png',
     badge: 'favicon-32.png',
-    data: { link: data.link || '/' }
+    data: { link: data.link || '/', tab: data.tab || '', itemId: data.itemId || '' }
   };
   self.registration.showNotification(title, options);
 });
 
-// 알림 클릭하면 해당 탭:게시글 해시가 붙은 주소로 이동 (이미 열려있으면 그 탭으로 포커스)
+// 알림 클릭하면 해당 탭:게시글로 이동.
+// 앱이 이미 열려있으면 postMessage로 직접 "이 탭/게시글로 이동해" 라고 알려주고
+// (URL 해시 변경에만 의존하면 백그라운드 탭에서 안정적으로 안 먹힐 때가 있어서),
+// 앱이 안 열려있으면 그냥 해시가 붙은 주소로 새로 열어.
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
-  const link = (event.notification.data && event.notification.data.link) || '/';
+  const data = event.notification.data || {};
+  const link = data.link || '/';
+
   event.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windowClients) => {
       for (const client of windowClients) {
         if ('focus' in client) {
-          client.navigate(link);
+          client.postMessage({ type: 'navigate', tab: data.tab, itemId: data.itemId });
           return client.focus();
         }
       }
