@@ -38,24 +38,30 @@ self.addEventListener('notificationclick', (event) => {
   const data = raw.FCM_MSG && raw.FCM_MSG.data ? raw.FCM_MSG.data : raw;
   const link = data.link || '/';
 
+  const isIOS = /iPad|iPhone|iPod/.test(self.navigator.userAgent);
+
   event.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windowClients) => {
-      // 이미 화면에 "실제로 보이는" 상태인 창이 있으면, 거긴 postMessage로 부드럽게 이동
-      const visibleClient = windowClients.find((c) => c.visibilityState === 'visible' && 'focus' in c);
-      if (visibleClient) {
-        visibleClient.postMessage({
-          type: 'navigate',
-          tab: data.tab,
-          itemId: data.itemId,
-          commentTs: data.commentTs,
-          replyTs: data.replyTs
-        });
-        return visibleClient.focus();
+      for (const client of windowClients) {
+        if ('focus' in client) {
+          client.postMessage({
+            type: 'navigate',
+            tab: data.tab,
+            itemId: data.itemId,
+            commentTs: data.commentTs,
+            replyTs: data.replyTs
+          });
+          client.focus();
+          // 아이폰은 폰이 잠겨있다가 그대로 알림을 눌렀을 때, focus()/postMessage()만으로는
+          // 완전히 반응이 없는 경우가 확인됨(안드로이드는 이걸로 잘 됨). 아이폰에서만
+          // 추가로 navigate()도 같이 시도해서 확실히 깨우도록 함.
+          if (isIOS && 'navigate' in client) {
+            try { client.navigate(link); } catch (e) { /* 무시 */ }
+          }
+          return;
+        }
       }
-      // 화면에 안 보이는 상태(백그라운드에 있거나, 폰이 잠겨있는 등)인 창만 있다면,
-      // 그 창에 focus()/postMessage()만 보내는 걸로는 아이폰에서 반응이 없는 경우가
-      // 확인돼서(안드로이드는 되는데 아이폰만 안 됨), openWindow로 확실하게 깨움.
-      return clients.openWindow(link);
+      if (clients.openWindow) return clients.openWindow(link);
     })
   );
 });
