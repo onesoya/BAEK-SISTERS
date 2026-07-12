@@ -37,7 +37,7 @@ db.enablePersistence()
   const ALL_NAMES = ['소정','지수','운빈','운경'];
   // 코드 새로 줄 때마다 이 값 올림 - 홈 화면 맨 아래에 표시돼서, 최신 버전이 실제로
   // 적용됐는지 앱만 열어봐도 바로 확인할 수 있게 해둠.
-  const APP_VERSION = '2026.07.13-4';
+  const APP_VERSION = '2026.07.13-5';
   function colorKeyOf(name){ return PERSON_COLOR[name] || 'yellow'; }
   
   async function searchLocations(query){
@@ -2789,6 +2789,35 @@ function startWatchers(){
 
   function navigateToItem(tab, itemId, commentTs, replyTs){
     activateTab(tab);
+
+    // 그 탭에 필터가 걸려있으면(예: 특정 사람 것만 보기), 알림으로 찾아온 게시글이
+    // 필터에 가려서 화면에 안 그려질 수 있음 -> 무조건 "전체 보기"로 풀어서
+    // 대상이 반드시 화면에 나타나게 함
+    if(tab === 'letter' && letterFilterTarget !== 'all'){
+      letterFilterTarget = 'all';
+      document.querySelectorAll('#letterFilterRow .filter-chip').forEach(b=>{
+        b.classList.toggle('active', b.dataset.letterFilter === 'all');
+      });
+    } else if(tab === 'wish' && wishAuthorFilter !== 'all'){
+      wishAuthorFilter = 'all';
+      document.querySelectorAll('#wishFilterRow [data-author-filter]').forEach(b=>{
+        b.classList.toggle('active', b.dataset.authorFilter === 'all');
+      });
+    } else if(tab === 'datelog' && dateLogAuthorFilter !== 'all'){
+      dateLogAuthorFilter = 'all';
+      document.querySelectorAll('#dateLogFilterRow [data-author-filter]').forEach(b=>{
+        b.classList.toggle('active', b.dataset.authorFilter === 'all');
+      });
+    } else if(tab === 'board' && boardAuthorFilter !== 'all'){
+      boardAuthorFilter = 'all';
+      document.querySelectorAll('#boardFilterRow [data-author-filter]').forEach(b=>{
+        b.classList.toggle('active', b.dataset.authorFilter === 'all');
+      });
+    } else if(tab === 'schedule' && scheduleFilterNames.length > 0){
+      scheduleFilterNames = [];
+      renderScheduleFilterRow();
+    }
+
     openPostDetails.add(itemId); // 데이터가 아직 안 왔어도, 오면 열려있도록 미리 기억해둠
 
     let item = null;
