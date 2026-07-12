@@ -2752,17 +2752,15 @@ function startWatchers(){
     // 콜드 스타트(알림으로 앱이 아예 새로 켜지는 경우)는 로그인 확인+데이터 연결까지
     // 시간이 좀 걸릴 수 있어서 넉넉하게 재시도함.
 
-    // 아이폰 사파리는 방금 DOM에 나타난/펼쳐진 요소로 바로 scrollIntoView를 부르면
-    // 레이아웃 계산이 덜 끝나서 씹히는 경우가 있어서, 화면이 그려질 시간을 한 번 더
-    // 확실하게 준 다음(requestAnimationFrame 두 번) 스크롤하도록 함.
+    // 아이폰 사파리는 알림 눌러서 화면이 막 뜨는 시점엔 아직 "포그라운드"로
+    // 완전히 확정되기 전이라, requestAnimationFrame이 아예 안 걸리는 경우가 있었음
+    // (그래서 스크롤 자체가 실행이 안 됐음). rAF 대신 setTimeout으로 안정적으로 대기.
     const scrollToEl = (el) => {
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          el.scrollIntoView({behavior:'smooth', block:'center'});
-          el.classList.add('search-flash');
-          setTimeout(()=> el.classList.remove('search-flash'), 1600);
-        });
-      });
+      setTimeout(() => {
+        el.scrollIntoView({behavior:'smooth', block:'center'});
+        el.classList.add('search-flash');
+        setTimeout(()=> el.classList.remove('search-flash'), 1600);
+      }, 200);
     };
 
     let attempts = 0;
