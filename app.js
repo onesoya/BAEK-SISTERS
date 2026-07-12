@@ -1386,12 +1386,18 @@ function renderLetters() {
       if(!proceed) return;
       resetDraftForTab(currentTab);
     }
-    // 떠나는 탭에서 펼쳐뒀던 게시물은 접어둬서, 다음에 다시 왔을 때 깔끔하게 시작하도록 함
+    // 떠나는 탭에서 펼쳐뒀던 게시물/댓글창/답글창은 상태까지 완전히 초기화해서,
+    // 다음에 다시 왔을 때 항상 깔끔하게 다 접힌 채로 시작하도록 함
     if(currentTab && currentTab !== tabName){
       const oldPanel = document.getElementById('panel-'+currentTab);
       if(oldPanel){
         oldPanel.querySelectorAll('.post-detail:not(.hidden)').forEach(d => d.classList.add('hidden'));
+        oldPanel.querySelectorAll('.comment-section.active').forEach(s => s.classList.remove('active'));
+        oldPanel.querySelectorAll('.reply-input-row.active').forEach(r => r.classList.remove('active'));
       }
+      openPostDetails.clear();
+      openCommentSections.clear();
+      openReplyInputs.clear();
       // 편지 탭을 나가면 받는사람 필터도 "전체"로 되돌림 (새로고침한 느낌으로)
       if(currentTab === 'letter' && letterFilterTarget !== 'all'){
         letterFilterTarget = 'all';
@@ -2369,6 +2375,17 @@ function startWatchers(){
     if (openPostDetails.has(id)) {
       openPostDetails.delete(id);
       detail.classList.add('hidden');
+      // 게시글을 닫으면 그 안의 댓글창 + 답글창 열림 상태도 같이 초기화
+      const commentSection = detail.querySelector('.comment-section');
+      if (commentSection) {
+        const sectionKey = commentSection.id.replace(/^comments-/, '');
+        openCommentSections.delete(sectionKey);
+        commentSection.classList.remove('active');
+        [...openReplyInputs].forEach(key => {
+          if (key.startsWith(sectionKey + '-')) openReplyInputs.delete(key);
+        });
+        commentSection.querySelectorAll('.reply-input-row.active').forEach(row => row.classList.remove('active'));
+      }
     } else {
       openPostDetails.add(id);
       detail.classList.remove('hidden');
@@ -2435,6 +2452,12 @@ function startWatchers(){
       
       if (openCommentSections.has(sectionKey)) {
         openCommentSections.delete(sectionKey);
+        // 댓글창을 닫으면 그 안의 답글창들도 같이 초기화
+        [...openReplyInputs].forEach(key => {
+          if (key.startsWith(sectionKey + '-')) openReplyInputs.delete(key);
+        });
+        const section2 = document.getElementById(`comments-${sectionKey}`);
+        if (section2) section2.querySelectorAll('.reply-input-row.active').forEach(row => row.classList.remove('active'));
       } else {
         openCommentSections.add(sectionKey);
       }
