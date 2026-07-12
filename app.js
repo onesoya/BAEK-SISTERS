@@ -1404,13 +1404,18 @@ function renderLetters() {
   document.getElementById('identityChip').addEventListener('click', ()=>{
     if(confirm('로그아웃할까?')) firebase.auth().signOut();
   });
+  let loginInProgress = false;
   document.getElementById('googleLoginBtn').addEventListener('click', ()=>{
+    loginInProgress = true;
+    showGate('로그인 중이야...', true);
     const provider = new firebase.auth.GoogleAuthProvider();
     firebase.auth().signInWithPopup(provider).catch(err=>{
       console.error('로그인 실패', err);
+      loginInProgress = false;
       if(err.code !== 'auth/popup-closed-by-user'){
         alert('로그인에 실패했어. 다시 시도해줘.');
       }
+      showGate('백씨스터즈 멤버만 쓸 수 있는 앱이야.<br>구글 계정으로 로그인해줘.');
     });
   });
 
@@ -2088,8 +2093,9 @@ function watch(query, collectionName, onData){
   };
 
 
-  function showGate(message){
+  function showGate(message, hideLoginBtn){
     document.getElementById('loginGateMsg').innerHTML = message;
+    document.getElementById('googleLoginBtn').classList.toggle('hidden', !!hideLoginBtn);
     document.getElementById('loginGate').classList.remove('hidden');
     document.querySelector('.app-shell').style.visibility = 'hidden';
   }
@@ -2662,6 +2668,7 @@ function startWatchers(){
 
     firebase.auth().onAuthStateChanged(user=>{
       if(user && EMAIL_MAP[user.email]){
+        loginInProgress = false;
         identity = EMAIL_MAP[user.email];
         updateIdentityChip();
         hideGate();
@@ -2676,9 +2683,12 @@ function startWatchers(){
           maybeShowNotifPrompt();
         }
       } else if(user && !EMAIL_MAP[user.email]){
+        loginInProgress = false;
         firebase.auth().signOut();
         showGate('이 구글 계정은 사용할 수 없어.<br>백씨스터즈 멤버 계정으로만 로그인해줘.');
-      } else {
+      } else if(!loginInProgress){
+        // 로그인 처리 중에 이 콜백이 user=null 상태로 한 번 더 불릴 때가 있는데,
+        // 그때는 "로그인 중이야..." 문구를 이 기본 문구로 덮어쓰지 않게 함
         showGate('백씨스터즈 멤버만 쓸 수 있는 앱이야.<br>구글 계정으로 로그인해줘.');
       }
     });
