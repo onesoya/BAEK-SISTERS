@@ -43,23 +43,25 @@ self.addEventListener('notificationclick', (event) => {
   const data = raw.FCM_MSG && raw.FCM_MSG.data ? raw.FCM_MSG.data : raw;
   const link = data.link || '/';
 
-  // 클릭(사용자 제스처) 즉시 openWindow를 바로 시도. 중간에 비동기 단계(matchAll 등)를
-  // 거치면 일부 브라우저(삼성인터넷 등)에서 "사용자가 직접 누른 것"이라는 인증이
-  // 끊겨서 창이 안 열리는 것으로 보여서, 최대한 단순하게 만듦.
   event.waitUntil(
-    (async () => {
-      try {
-        await clients.openWindow(link);
-      } catch (e) {
-        // 혹시라도 실패하면, 기존 창을 찾아서 포커스라도 주는 걸로 최후 대비
-        const windowClients = await clients.matchAll({ type: 'window', includeUncontrolled: true });
-        for (const client of windowClients) {
-          if ('focus' in client) {
-            client.postMessage({ type: 'navigate', tab: data.tab, itemId: data.itemId, commentTs: data.commentTs, replyTs: data.replyTs });
-            return client.focus();
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windowClients) => {
+      for (const client of windowClients) {
+        if ('focus' in client) {
+          client.postMessage({
+            type: 'navigate',
+            tab: data.tab,
+            itemId: data.itemId,
+            commentTs: data.commentTs,
+            replyTs: data.replyTs
+          });
+          client.focus();
+          if ('navigate' in client) {
+            try { client.navigate(link); } catch (e) { /* 무시 */ }
           }
+          return;
         }
       }
-    })()
+      if (clients.openWindow) return clients.openWindow(link);
+    })
   );
 });
