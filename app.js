@@ -1400,6 +1400,10 @@ function renderLetters() {
         });
         renderLetters();
       }
+      // 편지 탭을 나가면 "특정 날짜까지 잠그기" 선택도 눌리지 않은 상태로 되돌림
+      if(currentTab === 'letter'){
+        setLetterLockToggleState(false);
+      }
     }
     document.querySelectorAll('.tab-panel').forEach(p=>p.classList.remove('active'));
     panel.classList.add('active');
@@ -2046,15 +2050,23 @@ function renderLetters() {
   // ---- 편지 ----
   let editingLetterId = null;
   let letterSelectedRecipients = [];
-  let letterLockEnabled = false;
   renderParticipantChips('letterRecipientRow', letterSelectedRecipients);
   setupPhotoPicker('letterPhotoInput','letterPhotoBtn','letterPhotoPreviewWrap', ()=>pendingLetterPhotos, (v)=>{ pendingLetterPhotos = v; });
+
+  function setLetterLockToggleState(show){
+    document.getElementById('letterUnlockDateRow').classList.toggle('hidden', !show);
+    document.getElementById('letterLockToggle').textContent = show ? '- 잠금 해제일 제거' : '+ 특정 날짜까지 잠그기 (선택)';
+    if(!show){
+      document.getElementById('letterUnlockDate').value = '';
+      document.getElementById('letterUnlockTime').value = '';
+    }
+  }
   document.getElementById('letterLockToggle').addEventListener('click', ()=>{
-    letterLockEnabled = !letterLockEnabled;
-    document.getElementById('letterLockToggle').classList.toggle('active', letterLockEnabled);
-    document.getElementById('letterUnlockDateRow').classList.toggle('hidden', !letterLockEnabled);
+    const row = document.getElementById('letterUnlockDateRow');
+    const willShow = row.classList.contains('hidden');
+    setLetterLockToggleState(willShow);
   });
- 
+
   function startEditLetter(item){
     editingLetterId = item.id;
     document.getElementById('letterTitle').value = item.title || '';
@@ -2064,10 +2076,15 @@ function renderLetters() {
     renderPhotoPreviewGrid('letterPhotoPreviewWrap', ()=>pendingLetterPhotos, (v)=>{ pendingLetterPhotos = v; });
     letterSelectedRecipients = (item.recipients || []).slice();
     renderParticipantChips('letterRecipientRow', letterSelectedRecipients);
-    letterLockEnabled = !!item.unlockAt;
-    document.getElementById('letterLockToggle').classList.toggle('active', letterLockEnabled);
-    document.getElementById('letterUnlockDateRow').classList.toggle('hidden', !letterLockEnabled);
-    document.getElementById('letterUnlockDate').value = item.unlockAt ? toDateTimeLocalValue(item.unlockAt) : '';
+
+    if(item.unlockAt){
+      const [datePart, timePart] = toDateTimeLocalValue(item.unlockAt).split('T');
+      document.getElementById('letterUnlockDate').value = datePart;
+      document.getElementById('letterUnlockTime').value = timePart;
+      setLetterLockToggleState(true);
+    } else {
+      setLetterLockToggleState(false);
+    }
 
     document.getElementById('letterAddBtn').textContent = '수정 완료';
     document.getElementById('letterCancelBtn').classList.remove('hidden');
@@ -2083,10 +2100,7 @@ function renderLetters() {
     renderPhotoPreviewGrid('letterPhotoPreviewWrap', ()=>pendingLetterPhotos, (v)=>{ pendingLetterPhotos = v; });
     letterSelectedRecipients = [];
     renderParticipantChips('letterRecipientRow', letterSelectedRecipients);
-    letterLockEnabled = false;
-    document.getElementById('letterLockToggle').classList.remove('active');
-    document.getElementById('letterUnlockDateRow').classList.add('hidden');
-    document.getElementById('letterUnlockDate').value = '';
+    setLetterLockToggleState(false);
     document.getElementById('letterAddBtn').textContent = '편지 보내기';
     document.getElementById('letterCancelBtn').classList.add('hidden');
   }
@@ -2098,8 +2112,10 @@ function renderLetters() {
     const body = document.getElementById('letterBody').value.trim();
     if (!title || !body) return;
     const recipients = letterSelectedRecipients.length ? letterSelectedRecipients.slice() : ALL_NAMES.slice();
+    const lockOn = !document.getElementById('letterUnlockDateRow').classList.contains('hidden');
     const unlockDateVal = document.getElementById('letterUnlockDate').value;
-    const unlockAt = (letterLockEnabled && unlockDateVal) ? new Date(unlockDateVal).getTime() : null;
+    const unlockTimeVal = document.getElementById('letterUnlockTime').value || '00:00';
+    const unlockAt = (lockOn && unlockDateVal) ? new Date(`${unlockDateVal}T${unlockTimeVal}`).getTime() : null;
     const data = { title, body, recipients, unlockAt };
     data.unlockNotified = unlockAt ? false : null;
     if(!editingLetterId){ data.likes = []; data.comments = []; }

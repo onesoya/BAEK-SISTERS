@@ -215,10 +215,17 @@
           <button class="btn-photo" id="letterPhotoBtn">📷 사진 추가 (선택)</button>
         </div>
         <div class="photo-preview-grid hidden" id="letterPhotoPreviewWrap"></div>
-        <button type="button" class="date-plan-toggle" id="letterLockToggle">🔒 특정 날짜·시간에 잠금 해제</button>
-        <div class="add-row hidden" id="letterUnlockDateRow">
-          <input type="datetime-local" id="letterUnlockDate">
+        <div class="datetime-row hidden" id="letterUnlockDateRow">
+          <div class="field-group date-field">
+            <label class="field-label">🔒 잠금 해제일</label>
+            <input type="date" id="letterUnlockDate">
+          </div>
+          <div class="field-group time-field">
+            <label class="field-label">🕐 시간</label>
+            <input type="time" id="letterUnlockTime">
+          </div>
         </div>
+        <button type="button" class="link-toggle-btn" id="letterLockToggle">+ 특정 날짜까지 잠그기 (선택)</button>
         <div class="add-row">
           <button class="btn" id="letterAddBtn" style="width:100%;">편지 보내기</button>
         </div>
