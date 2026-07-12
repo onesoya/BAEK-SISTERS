@@ -2050,7 +2050,7 @@ function watch(query, collectionName, onData){
       }
       messaging.onMessage((payload)=>{
         showPushToast(
-          payload.notification && payload.notification.title,
+          payload.data && payload.data.title,
           payload.data && payload.data.tab,
           payload.data && payload.data.itemId
         );
