@@ -37,7 +37,7 @@ db.enablePersistence()
   const ALL_NAMES = ['소정','지수','운빈','운경'];
   // 코드 새로 줄 때마다 이 값 올림 - 홈 화면 맨 아래에 표시돼서, 최신 버전이 실제로
   // 적용됐는지 앱만 열어봐도 바로 확인할 수 있게 해둠.
-  const APP_VERSION = '2026.07.13-3';
+  const APP_VERSION = '2026.07.13-4';
   function colorKeyOf(name){ return PERSON_COLOR[name] || 'yellow'; }
   
   async function searchLocations(query){
@@ -332,6 +332,7 @@ async function uploadPhotos(photosArray, onProgress) {
   // 화면이 다시 보이게 될 때 등) 계속 확인해서, 목표를 찾으면 그때 스크롤하고 지움.
   // 재시도 횟수/타이밍에 기대는 것보다 훨씬 끈질기게 작동함.
   let pendingScrollTarget = null; // { itemId, commentTs, replyTs }
+  let scrollPollInterval = null; // 폴링 타이머 추적 (성공하면 바로 꺼주기 위함)
 
   function scrollToEl(el){
     setTimeout(() => {
@@ -340,6 +341,15 @@ async function uploadPhotos(photosArray, onProgress) {
       el.classList.add('search-flash');
       setTimeout(()=> el.classList.remove('search-flash'), 1600);
     }, 200);
+  }
+
+  // 스크롤 목표를 찾았을 때(성공) 상태와 폴링 타이머를 한 번에 깔끔하게 정리
+  function clearScrollState(){
+    pendingScrollTarget = null;
+    if(scrollPollInterval){
+      clearInterval(scrollPollInterval);
+      scrollPollInterval = null;
+    }
   }
 
   function tryConsumePendingScroll(){
@@ -352,7 +362,7 @@ async function uploadPhotos(photosArray, onProgress) {
     if(detail) detail.classList.remove('hidden');
 
     if(!commentTs){
-      pendingScrollTarget = null;
+      clearScrollState();
       scrollToEl(card);
       return;
     }
@@ -373,11 +383,17 @@ async function uploadPhotos(photosArray, onProgress) {
     const anchorTs = replyTs || commentTs;
     const anchorEl = card.querySelector(`[data-comment-anchor="${anchorTs}"]`);
     if(anchorEl){
-      pendingScrollTarget = null;
+      clearScrollState();
       scrollToEl(anchorEl);
     }
     // 특정 댓글/답글을 아직 못 찾았으면 pendingScrollTarget을 그대로 둬서 다음 기회에 재시도
   }
+
+  // 화면이 다시 보이게 되는 걸 알려주는 이벤트들 - 여러 번 호출부에서 등록하지 않고
+  // 여기서 한 번만 전역으로 등록해둠 (기명 함수라 중복 등록은 원래도 안 됐지만, 구조상 더 깔끔하게)
+  document.addEventListener('visibilitychange', tryConsumePendingScroll);
+  window.addEventListener('focus', tryConsumePendingScroll);
+  window.addEventListener('pageshow', tryConsumePendingScroll);
 
   // 댓글창 HTML을 그려주는 공통 함수
   function renderCommentsHTML(item, colName) {
@@ -2817,20 +2833,17 @@ function startWatchers(){
     // + 주기적으로(폴링) 계속 확인해서, 목표를 찾는 순간 스크롤함. 콜드 스타트(알림으로
     // 앱이 아예 새로 켜지는 경우)는 로그인 확인+데이터 연결까지 시간이 걸릴 수 있어서
     // 이렇게 여러 경로로 끈질기게 재시도하는 게 훨씬 안정적임.
+    if(scrollPollInterval) clearInterval(scrollPollInterval); // 이전 목표용 폴링이 혹시 남아있으면 정리
     pendingScrollTarget = { tab, itemId, commentTs, replyTs };
     tryConsumePendingScroll(); // 지금 당장 한 번 시도
 
-    document.addEventListener('visibilitychange', tryConsumePendingScroll);
-    window.addEventListener('focus', tryConsumePendingScroll);
-    window.addEventListener('pageshow', tryConsumePendingScroll);
-
-    // 위 이벤트들도 다 못 걸리는 상황을 대비해서, 최대 10초 동안 0.5초마다 확인하는
-    // 최후의 안전장치도 같이 둠
+    // 위 즉시 시도 + 전역 등록된 visibilitychange/focus/pageshow로도 다 못 걸리는
+    // 상황을 대비해서, 최대 10초 동안 0.5초마다 확인하는 최후의 안전장치도 같이 둠
     let pollCount = 0;
-    const pollInterval = setInterval(() => {
+    scrollPollInterval = setInterval(() => {
       pollCount++;
       if(!pendingScrollTarget || pollCount > 20){
-        clearInterval(pollInterval);
+        clearScrollState();
         return;
       }
       tryConsumePendingScroll();
