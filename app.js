@@ -226,6 +226,22 @@ async function uploadPhotos(photosArray, onProgress) {
     const dt = new Date(d + 'T00:00:00');
     return `${dt.getMonth()+1}.${dt.getDate()}`;
   }
+  // 타임스탬프 -> "7.20 15:30" 형태 (편지 잠금 해제 시각 표시용)
+  function fmtShortDateTime(ts){
+    if(!ts) return '';
+    const d = new Date(ts);
+    const hh = String(d.getHours()).padStart(2,'0');
+    const mm = String(d.getMinutes()).padStart(2,'0');
+    return `${d.getMonth()+1}.${d.getDate()} ${hh}:${mm}`;
+  }
+  // 타임스탬프 -> <input type="datetime-local"> 값 형태 ("YYYY-MM-DDTHH:mm", 로컬 시간 기준)
+  function toDateTimeLocalValue(ts){
+    if(!ts) return '';
+    const d = new Date(ts);
+    const y = d.getFullYear(), m = String(d.getMonth()+1).padStart(2,'0'), day = String(d.getDate()).padStart(2,'0');
+    const hh = String(d.getHours()).padStart(2,'0'), mm = String(d.getMinutes()).padStart(2,'0');
+    return `${y}-${m}-${day}T${hh}:${mm}`;
+  }
   function isPast(item){
     const d = item && item.endDate ? item.endDate : (item && item.date);
     if(!d) return false;
@@ -300,20 +316,44 @@ async function uploadPhotos(photosArray, onProgress) {
 // 열려 있는 댓글창 ID를 기억하는 공간 (새로고침 시 닫힘 방지)
   let openCommentSections = new Set();
   let openPostDetails = new Set();
+  let openReplyInputs = new Set(); // "col-itemId-commentTs" 형태로 답글 입력창 열림 상태 기억
 
   // 댓글창 HTML을 그려주는 공통 함수
   function renderCommentsHTML(item, colName) {
     const comments = item.comments || [];
     const isOpen = openCommentSections.has(`${colName}-${item.id}`);
-    
-    const commentListHTML = comments.map(c => `
-      <div class="comment-item">
+
+    const commentListHTML = comments.map(c => {
+      const replies = c.replies || [];
+      const replyKey = `${colName}-${item.id}-${c.ts}`;
+      const isReplyOpen = openReplyInputs.has(replyKey);
+
+      const repliesHTML = replies.map(r => `
+        <div class="comment-item reply-item" data-comment-anchor="${r.ts}">
+          <span class="c-author color-${colorKeyOf(r.author)}">${r.author}</span>
+          <span class="c-text">${escapeHTML(r.text)}</span>
+          ${r.author === identity ? `<button class="r-del" data-comment-col="${colName}" data-comment-id="${item.id}" data-parent-ts="${c.ts}" data-reply-ts="${r.ts}">✕</button>` : ''}
+          <div class="c-time">${formatDateTimeKR(r.ts)}</div>
+        </div>
+      `).join('');
+
+      return `
+      <div class="comment-item" data-comment-anchor="${c.ts}">
         <span class="c-author color-${colorKeyOf(c.author)}">${c.author}</span>
         <span class="c-text">${escapeHTML(c.text)}</span>
         ${c.author === identity ? `<button class="c-del" data-comment-col="${colName}" data-comment-id="${item.id}" data-comment-ts="${c.ts}">✕</button>` : ''}
-        <div class="c-time">${formatDateTimeKR(c.ts)}</div>
+        <div class="c-time">
+          ${formatDateTimeKR(c.ts)}
+          <button type="button" class="reply-toggle-btn" data-reply-toggle-col="${colName}" data-reply-toggle-id="${item.id}" data-reply-toggle-ts="${c.ts}">답글 달기</button>
+        </div>
+        ${replies.length > 0 ? `<div class="reply-list">${repliesHTML}</div>` : ''}
+        <div class="reply-input-row ${isReplyOpen ? 'active' : ''}" id="reply-row-${colName}-${item.id}-${c.ts}">
+          <input type="text" placeholder="답글을 입력해 봐" id="r-input-${colName}-${item.id}-${c.ts}" onkeypress="if(event.key==='Enter') document.getElementById('r-btn-${colName}-${item.id}-${c.ts}').click();">
+          <button id="r-btn-${colName}-${item.id}-${c.ts}" class="r-submit" data-reply-submit-col="${colName}" data-reply-submit-id="${item.id}" data-reply-submit-parent-ts="${c.ts}">작성</button>
+        </div>
       </div>
-    `).join('');
+    `;
+    }).join('');
 
     return `
       <div class="comment-section ${isOpen ? 'active' : ''}" id="comments-${colName}-${item.id}">
@@ -1034,7 +1074,7 @@ function renderBoard() {
         </div>
         <div class="post-detail ${openPostDetails.has(item.id) ? '' : 'hidden'}">
           ${isLocked
-            ? `<div class="lock-badge">🔒 ${fmtShortDate(new Date(item.unlockAt).toISOString().slice(0,10))}에 열려</div>`
+            ? `<div class="lock-badge">🔒 ${fmtShortDateTime(item.unlockAt)}에 열려</div>`
             : `<div class="wish-body">${escapeHTML(item.body)}</div>${cardPhotosHTML(item)}`
           }
           <div class="wish-footer">
@@ -1150,20 +1190,20 @@ function renderLetters() {
     const items = [];
     schedule.forEach(it=>{
       if(!it.createdAt) return;
-      items.push({ ts: it.createdAt, author: it.author, label:'일정', text: it.title, tab:'schedule' });
+      items.push({ id: it.id, ts: it.createdAt, author: it.author, label:'일정', text: it.title, tab:'schedule' });
     });
     wishes.forEach(it=>{
-      items.push({ ts: it.createdAt || 0, author: it.author, label:'위시', text: it.title, tab:'wish' });
+      items.push({ id: it.id, ts: it.createdAt || 0, author: it.author, label:'위시', text: it.title, tab:'wish' });
     });
     dateLogs.forEach(it=>{
       if(!it.createdAt) return;
-      items.push({ ts: it.createdAt, author: it.author, label:'데이트기록', text: it.title, tab:'datelog' });
+      items.push({ id: it.id, ts: it.createdAt, author: it.author, label:'데이트기록', text: it.title, tab:'datelog' });
     });
     boards.forEach(it=>{
-      items.push({ ts: it.createdAt || 0, author: it.author, label:'게시판', text: it.title, tab:'board' });
+      items.push({ id: it.id, ts: it.createdAt || 0, author: it.author, label:'게시판', text: it.title, tab:'board' });
     });
     letters.forEach(it=>{
-      items.push({ ts: it.createdAt || 0, author: it.author, label:'편지', text: it.title || it.body, tab:'letter' });
+      items.push({ id: it.id, ts: it.createdAt || 0, author: it.author, label:'편지', text: it.title || it.body, tab:'letter' });
     });
     return items.sort((a,b)=> b.ts - a.ts).slice(0, 2);
   }
@@ -1221,14 +1261,14 @@ function renderLetters() {
         const authorClass = a => `color-${colorKeyOf(a)}`;
         feedCard.innerHTML = `
           <div class="home-next-label">🕓 최근 활동</div>
-          ${feed.map(f => `<div class="home-feed-item" data-tab-target="${f.tab}">
+          ${feed.map(f => `<div class="home-feed-item" data-tab-target="${f.tab}" data-item-target="${f.id}">
             <span class="home-feed-author ${authorClass(f.author)}">${f.author||''}</span>
             <span class="home-feed-text">${f.label} · ${escapeHTML((f.text||'').slice(0,24))}</span>
             <span class="home-feed-time">${relativeTimeKR(f.ts)}</span>
           </div>`).join('')}
         `;
         feedCard.querySelectorAll('.home-feed-item').forEach(el=>{
-          el.addEventListener('click', ()=> activateTab(el.dataset.tabTarget));
+          el.addEventListener('click', ()=> navigateToItem(el.dataset.tabTarget, el.dataset.itemTarget));
         });
       }
     }
@@ -1372,9 +1412,9 @@ function renderLetters() {
   function activateTabFromHash(){
     const hash = window.location.hash.replace('#','');
     if(!hash) return;
-    const [tab, itemId] = hash.split(':');
+    const [tab, itemId, commentTs, replyTs] = hash.split(':');
     if(!tab) return;
-    if(itemId) navigateToItem(tab, itemId);
+    if(itemId) navigateToItem(tab, itemId, commentTs, replyTs);
     else activateTab(tab);
   }
   document.querySelectorAll('.tab-btn').forEach(btn=>{
@@ -1392,7 +1432,7 @@ function renderLetters() {
   if('serviceWorker' in navigator){
     navigator.serviceWorker.addEventListener('message', (event)=>{
       if(event.data && event.data.type === 'navigate' && event.data.tab){
-        if(event.data.itemId) navigateToItem(event.data.tab, event.data.itemId);
+        if(event.data.itemId) navigateToItem(event.data.tab, event.data.itemId, event.data.commentTs, event.data.replyTs);
         else activateTab(event.data.tab);
       }
     });
@@ -2027,7 +2067,7 @@ function renderLetters() {
     letterLockEnabled = !!item.unlockAt;
     document.getElementById('letterLockToggle').classList.toggle('active', letterLockEnabled);
     document.getElementById('letterUnlockDateRow').classList.toggle('hidden', !letterLockEnabled);
-    document.getElementById('letterUnlockDate').value = item.unlockAt ? new Date(item.unlockAt).toISOString().slice(0,10) : '';
+    document.getElementById('letterUnlockDate').value = item.unlockAt ? toDateTimeLocalValue(item.unlockAt) : '';
 
     document.getElementById('letterAddBtn').textContent = '수정 완료';
     document.getElementById('letterCancelBtn').classList.remove('hidden');
@@ -2059,8 +2099,9 @@ function renderLetters() {
     if (!title || !body) return;
     const recipients = letterSelectedRecipients.length ? letterSelectedRecipients.slice() : ALL_NAMES.slice();
     const unlockDateVal = document.getElementById('letterUnlockDate').value;
-    const unlockAt = (letterLockEnabled && unlockDateVal) ? new Date(unlockDateVal + 'T00:00:00').getTime() : null;
+    const unlockAt = (letterLockEnabled && unlockDateVal) ? new Date(unlockDateVal).getTime() : null;
     const data = { title, body, recipients, unlockAt };
+    data.unlockNotified = unlockAt ? false : null;
     if(!editingLetterId){ data.likes = []; data.comments = []; }
     await saveItem('letters', !!editingLetterId, editingLetterId, data, pendingLetterPhotos, resetLetterForm);
   });
@@ -2108,9 +2149,13 @@ function watch(query, collectionName, onData){
   let pushToastTimer = null;
   let pushToastTab = null;
   let pushToastItemId = null;
-  function showPushToast(title, tab, itemId){
+  let pushToastCommentTs = null;
+  let pushToastReplyTs = null;
+  function showPushToast(title, tab, itemId, commentTs, replyTs){
     pushToastTab = tab || null;
     pushToastItemId = itemId || null;
+    pushToastCommentTs = commentTs || null;
+    pushToastReplyTs = replyTs || null;
     document.getElementById('pushToastTitle').textContent = title || '';
     document.getElementById('pushToastBody').textContent = '';
     const toast = document.getElementById('pushToast');
@@ -2121,7 +2166,7 @@ function watch(query, collectionName, onData){
   document.getElementById('pushToast').addEventListener('click', ()=>{
     document.getElementById('pushToast').classList.add('hidden');
     clearTimeout(pushToastTimer);
-    if(pushToastItemId && pushToastTab) navigateToItem(pushToastTab, pushToastItemId);
+    if(pushToastItemId && pushToastTab) navigateToItem(pushToastTab, pushToastItemId, pushToastCommentTs, pushToastReplyTs);
     else if(pushToastTab) activateTab(pushToastTab);
   });
 
@@ -2140,7 +2185,9 @@ function watch(query, collectionName, onData){
         showPushToast(
           payload.data && payload.data.title,
           payload.data && payload.data.tab,
-          payload.data && payload.data.itemId
+          payload.data && payload.data.itemId,
+          payload.data && payload.data.commentTs,
+          payload.data && payload.data.replyTs
         );
       });
     }catch(e){
@@ -2427,6 +2474,77 @@ function startWatchers(){
           comments: firebase.firestore.FieldValue.arrayRemove(targetComment)
         }).catch(err => console.error('댓글 삭제 실패:', err));
       }
+      return;
+    }
+
+    // 4. 답글 입력창 열기/닫기
+    const replyToggleBtn = e.target.closest('.reply-toggle-btn');
+    if (replyToggleBtn) {
+      const col = replyToggleBtn.dataset.replyToggleCol;
+      const id = replyToggleBtn.dataset.replyToggleId;
+      const ts = replyToggleBtn.dataset.replyToggleTs;
+      const key = `${col}-${id}-${ts}`;
+      if (openReplyInputs.has(key)) openReplyInputs.delete(key);
+      else openReplyInputs.add(key);
+      const row = document.getElementById(`reply-row-${col}-${id}-${ts}`);
+      if (row) row.classList.toggle('active');
+      return;
+    }
+
+    // 5. 답글 작성 (댓글 하나에 딱 1단계까지만)
+    const replySubmitBtn = e.target.closest('.r-submit');
+    if (replySubmitBtn) {
+      const col = replySubmitBtn.dataset.replySubmitCol;
+      const id = replySubmitBtn.dataset.replySubmitId;
+      const parentTs = Number(replySubmitBtn.dataset.replySubmitParentTs);
+      const input = document.getElementById(`r-input-${col}-${id}-${parentTs}`);
+      const text = input ? input.value.trim() : '';
+      if (!text || !identity) return;
+
+      (async () => {
+        try {
+          const ref = db.collection(col).doc(id);
+          const snap = await ref.get();
+          const comments = (snap.data().comments || []).map(c => {
+            if (c.ts === parentTs) {
+              const replies = c.replies || [];
+              return { ...c, replies: [...replies, { author: identity, text, ts: Date.now() }] };
+            }
+            return c;
+          });
+          await ref.update({ comments });
+          if (input) input.value = '';
+        } catch (err) {
+          console.error('답글 작성 실패:', err);
+        }
+      })();
+      return;
+    }
+
+    // 6. 내 답글 삭제
+    const replyDelBtn = e.target.closest('.r-del');
+    if (replyDelBtn) {
+      if (!confirm('이 답글을 지울까?')) return;
+      const col = replyDelBtn.dataset.commentCol;
+      const id = replyDelBtn.dataset.commentId;
+      const parentTs = Number(replyDelBtn.dataset.parentTs);
+      const replyTs = Number(replyDelBtn.dataset.replyTs);
+
+      (async () => {
+        try {
+          const ref = db.collection(col).doc(id);
+          const snap = await ref.get();
+          const comments = (snap.data().comments || []).map(c => {
+            if (c.ts === parentTs) {
+              return { ...c, replies: (c.replies || []).filter(r => !(r.ts === replyTs && r.author === identity)) };
+            }
+            return c;
+          });
+          await ref.update({ comments });
+        } catch (err) {
+          console.error('답글 삭제 실패:', err);
+        }
+      })();
     }
   });
 
@@ -2504,7 +2622,9 @@ function startWatchers(){
     });
   }
 
-  function navigateToItem(tab, itemId){
+  const TAB_TO_COL = { wish:'wishlist', datelog:'datelog', board:'board', letter:'letters' };
+
+  function navigateToItem(tab, itemId, commentTs, replyTs){
     activateTab(tab);
     openPostDetails.add(itemId); // 데이터가 아직 안 왔어도, 오면 열려있도록 미리 기억해둠
 
@@ -2530,6 +2650,11 @@ function startWatchers(){
       }
     }
 
+    // 댓글/답글 알림으로 들어온 경우 -> 댓글창도 미리 열려있게 기억
+    if(commentTs && TAB_TO_COL[tab]){
+      openCommentSections.add(`${TAB_TO_COL[tab]}-${itemId}`);
+    }
+
     const renderMap = {
       schedule: renderSchedule,
       wish: renderWish,
@@ -2547,9 +2672,24 @@ function startWatchers(){
       if(card){
         const detail = card.querySelector('.post-detail');
         if(detail) detail.classList.remove('hidden');
-        card.scrollIntoView({behavior:'smooth', block:'center'});
-        card.classList.add('search-flash');
-        setTimeout(()=> card.classList.remove('search-flash'), 1600);
+
+        if(commentTs){
+          const section = card.querySelector('.comment-section');
+          if(section) section.classList.add('active');
+          // 댓글창이 펼쳐질 시간을 살짝 준 다음 그 댓글(또는 답글)로 스크롤
+          setTimeout(()=>{
+            const anchorTs = replyTs || commentTs;
+            const anchorEl = card.querySelector(`[data-comment-anchor="${anchorTs}"]`);
+            const target = anchorEl || card;
+            target.scrollIntoView({behavior:'smooth', block:'center'});
+            target.classList.add('search-flash');
+            setTimeout(()=> target.classList.remove('search-flash'), 1600);
+          }, 120);
+        } else {
+          card.scrollIntoView({behavior:'smooth', block:'center'});
+          card.classList.add('search-flash');
+          setTimeout(()=> card.classList.remove('search-flash'), 1600);
+        }
       } else if(attempts < 10){
         attempts++;
         setTimeout(tryScroll, 300);
