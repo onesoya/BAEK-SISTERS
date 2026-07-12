@@ -18,29 +18,36 @@ self.addEventListener('activate', (event) => {
   event.waitUntil(clients.claim());
 });
 
-// 여기서 firebase.messaging()을 호출해두면 SDK가 백그라운드 푸시(notification 필드 있는 메시지)를
-// 자동으로 인식하고 처리함.
 const messaging = firebase.messaging();
 
-// onBackgroundMessage를 "등록"은 해두되(삼성인터넷 등에서 서비스워커가 푸시에 반응해서
-// 제대로 깨어나는 데 이게 필요한 것으로 확인됨), 여기서 showNotification()을 직접
-// 호출하지는 않음. notification 필드가 있으면 SDK가 어차피 자기가 알아서 띄우기 때문에,
-// 여기서 또 띄우면 알림이 두 번 뜸. 클릭 시 이동은 Cloud Functions에서 보낸
-// webpush.fcmOptions.link를 SDK가 그대로 사용해서 처리함.
-messaging.onBackgroundMessage(() => {
-  // 의도적으로 아무것도 안 함 (SDK 자동 표시에 맡김)
+// notification 필드는 삼성인터넷 등에서의 배송 안정성 때문에 계속 포함하지만,
+// 표시 자체는 우리가 직접 해서 tab/itemId 등 이동 정보(data)가 확실히 알림에
+// 붙도록 함.
+messaging.onBackgroundMessage((payload) => {
+  const notif = payload.notification || {};
+  const data = payload.data || {};
+  const title = notif.title || data.title || '백씨스터즈';
+  const options = {
+    body: notif.body || data.body || '',
+    icon: 'icon-180.png',
+    badge: 'favicon-32.png',
+    data: {
+      link: data.link || '/',
+      tab: data.tab || '',
+      itemId: data.itemId || '',
+      commentTs: data.commentTs || '',
+      replyTs: data.replyTs || ''
+    }
+  };
+  self.registration.showNotification(title, options);
 });
 
-// 알림 표시는 SDK가 자동으로 하지만(위), 클릭했을 때 이동시키는 건 SDK 내부 기능
-// (fcmOptions.link)이 아이폰(사파리)에서는 되는데 삼성인터넷에서는 안 먹히는 게 확인돼서,
-// 클릭 처리만 우리가 직접 함. notificationclick은 누가 띄운 알림이든 상관없이 항상 뜨는
-// 이벤트라서, 이렇게 해도 표시 자체가 중복되진 않음.
+// 알림 클릭하면 해당 탭:게시글(:댓글:답글)로 이동.
+// 앱이 이미 열려있으면 postMessage로 직접 "이 탭/게시글로 이동해" 라고 알려주고,
+// 앱이 안 열려있으면 그냥 해시가 붙은 주소로 새로 열어.
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
-  // Firebase SDK가 알림을 자동 표시할 때, data를 그대로 안 주고
-  // FCM_MSG라는 키 아래에 원본 페이로드를 통째로 감싸서 주는 경우가 있어서 둘 다 확인함.
-  const raw = event.notification.data || {};
-  const data = raw.FCM_MSG && raw.FCM_MSG.data ? raw.FCM_MSG.data : raw;
+  const data = event.notification.data || {};
   const link = data.link || '/';
 
   event.waitUntil(
