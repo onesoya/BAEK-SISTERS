@@ -19,10 +19,14 @@ self.addEventListener('activate', (event) => {
 });
 
 // 여기서 firebase.messaging()을 호출해두면 SDK가 백그라운드 푸시(notification 필드 있는 메시지)를
-// 자동으로 인식하고 처리함. onBackgroundMessage나 notificationclick을 우리가 직접 등록하면
-// - notification 필드가 있는 메시지는 브라우저가 어차피 우리 코드를 안 거치고 자체 처리하고
-//   (이때 클릭 시 이동은 Cloud Functions에서 보낸 webpush.fcmOptions.link를 그대로 씀)
-// - 거기에 우리 코드까지 끼어들면 오히려 화면 이동 정보가 꼬여서 엉뚱한 곳(홈)으로 가버리는
-//   문제가 실제로 확인됐음.
-// 그래서 여기서는 아무것도 커스텀하지 않고, SDK 기본 동작 + fcmOptions.link에만 맡김.
-firebase.messaging();
+// 자동으로 인식하고 처리함.
+const messaging = firebase.messaging();
+
+// onBackgroundMessage를 "등록"은 해두되(삼성인터넷 등에서 서비스워커가 푸시에 반응해서
+// 제대로 깨어나는 데 이게 필요한 것으로 확인됨), 여기서 showNotification()을 직접
+// 호출하지는 않음. notification 필드가 있으면 SDK가 어차피 자기가 알아서 띄우기 때문에,
+// 여기서 또 띄우면 알림이 두 번 뜸. 클릭 시 이동은 Cloud Functions에서 보낸
+// webpush.fcmOptions.link를 SDK가 그대로 사용해서 처리함.
+messaging.onBackgroundMessage(() => {
+  // 의도적으로 아무것도 안 함 (SDK 자동 표시에 맡김)
+});
