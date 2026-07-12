@@ -37,7 +37,7 @@ db.enablePersistence()
   const ALL_NAMES = ['소정','지수','운빈','운경'];
   // 코드 새로 줄 때마다 이 값 올림 - 홈 화면 맨 아래에 표시돼서, 최신 버전이 실제로
   // 적용됐는지 앱만 열어봐도 바로 확인할 수 있게 해둠.
-  const APP_VERSION = '2026.07.13-8';
+  const APP_VERSION = '2026.07.13-9';
   function colorKeyOf(name){ return PERSON_COLOR[name] || 'yellow'; }
   
   async function searchLocations(query){
@@ -2958,6 +2958,92 @@ function startWatchers(){
   }
   document.getElementById('searchOpenBtn').addEventListener('click', openSearchOverlay);
   document.getElementById('searchCloseBtn').addEventListener('click', closeSearchOverlay);
+
+  // ---- 내 활동 모아보기 (내가 쓴 글 + 내가 쓴 댓글/답글) ----
+  const MY_ACTIVITY_COLLECTIONS = [
+    { list: () => schedule, tab:'schedule', label:'일정',
+      getTitle: it => it.title, getSub: it => it.memo || fmtShortDate(it.date),
+      getTs: it => it.createdAt || new Date(it.date+'T00:00:00').getTime() },
+    { list: () => wishes, tab:'wish', label:'위시',
+      getTitle: it => it.title, getSub: it => it.body || '', getTs: it => it.createdAt || 0 },
+    { list: () => dateLogs, tab:'datelog', label:'데이트기록',
+      getTitle: it => it.title, getSub: it => it.memo || it.location || '',
+      getTs: it => it.createdAt || new Date(it.date+'T00:00:00').getTime() },
+    { list: () => boards, tab:'board', label:'게시판',
+      getTitle: it => it.title, getSub: it => it.body || '', getTs: it => it.createdAt || 0 },
+    { list: () => letters, tab:'letter', label:'편지',
+      getTitle: it => it.title || (it.body||'').slice(0,20), getSub: it => it.body || '', getTs: it => it.createdAt || 0 },
+  ];
+
+  function buildMyActivityIndex(){
+    if(!identity) return [];
+    const items = [];
+    MY_ACTIVITY_COLLECTIONS.forEach(({ list, tab, label, getTitle, getSub, getTs }) => {
+      list().forEach(it => {
+        if(it.author === identity){
+          items.push({ kind:'post', tab, label:`내가 쓴 ${label}`, ts:getTs(it), title:getTitle(it), sub:getSub(it), itemId:it.id });
+        }
+        (it.comments || []).forEach(c => {
+          if(c.author === identity && !c.deleted){
+            items.push({ kind:'comment', tab, label:`${label}에 남긴 댓글`, ts:c.ts, title:getTitle(it), sub:c.text || '', itemId:it.id, commentTs:c.ts });
+          }
+          (c.replies || []).forEach(r => {
+            if(r.author === identity){
+              items.push({ kind:'comment', tab, label:`${label}에 남긴 답글`, ts:r.ts, title:getTitle(it), sub:r.text || '', itemId:it.id, commentTs:c.ts, replyTs:r.ts });
+            }
+          });
+        });
+      });
+    });
+    return items.sort((a,b)=> b.ts - a.ts);
+  }
+
+  let myActivityCategory = 'all';
+  function renderMyActivityResults(){
+    const container = document.getElementById('myActivityResults');
+    let index = buildMyActivityIndex();
+    if(myActivityCategory !== 'all') index = index.filter(r => r.kind === myActivityCategory);
+
+    if(index.length === 0){
+      container.innerHTML = '<div class="empty-state" style="padding:30px 10px;">아직 활동이 없어.</div>';
+      return;
+    }
+    container.innerHTML = index.map((r,i) => `
+      <div class="search-result-item" data-my-activity-idx="${i}">
+        <span class="search-result-label">${r.label}</span>
+        <div>
+          <div class="search-result-title">${escapeHTML(r.title || '')}</div>
+          ${r.sub ? `<div class="search-result-sub">${escapeHTML(r.sub.slice(0,44))}</div>` : ''}
+        </div>
+      </div>
+    `).join('');
+    container.querySelectorAll('[data-my-activity-idx]').forEach((el,i)=>{
+      el.addEventListener('click', ()=>{
+        closeMyActivityOverlay();
+        navigateToItem(index[i].tab, index[i].itemId, index[i].commentTs, index[i].replyTs);
+      });
+    });
+  }
+
+  function openMyActivityOverlay(){
+    document.getElementById('myActivityOverlay').classList.remove('hidden');
+    myActivityCategory = 'all';
+    document.querySelectorAll('#myActivityCategoryRow .activity-cat-btn').forEach(b=> b.classList.toggle('active', b.dataset.myCat === 'all'));
+    renderMyActivityResults();
+  }
+  function closeMyActivityOverlay(){
+    document.getElementById('myActivityOverlay').classList.add('hidden');
+  }
+  document.getElementById('myActivityBtn').addEventListener('click', openMyActivityOverlay);
+  document.getElementById('myActivityCloseBtn').addEventListener('click', closeMyActivityOverlay);
+  document.querySelectorAll('#myActivityCategoryRow .activity-cat-btn').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      document.querySelectorAll('#myActivityCategoryRow .activity-cat-btn').forEach(b=>b.classList.remove('active'));
+      btn.classList.add('active');
+      myActivityCategory = btn.dataset.myCat;
+      renderMyActivityResults();
+    });
+  });
   let searchDebounceTimer = null;
   document.getElementById('searchInput').addEventListener('input', (e)=>{
     const value = e.target.value.toLowerCase();

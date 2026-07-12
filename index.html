@@ -37,6 +37,7 @@
       </div>
     </div>
     <div style="display:flex; align-items:center; gap:8px;">
+      <button class="icon-btn" id="myActivityBtn" title="내 활동" style="font-size:19px;">🗂️</button>
       <button class="icon-btn" id="searchOpenBtn" title="검색"><img src="search-icon.png" alt="검색"></button>
       <button class="identity-chip" id="identityChip" title="탭하면 로그아웃">나는 ...</button>
     </div>
@@ -383,6 +384,19 @@
   <div class="lightbox hidden" id="dateMapModal">
     <button class="lightbox-close" id="dateMapClose">✕</button>
     <div id="dateMapContainer" style="width:100%;height:100%;"></div>
+  </div>
+
+  <div class="search-overlay hidden" id="myActivityOverlay">
+    <div class="search-overlay-header">
+      <div class="app-title" style="font-size:16px;">🗂️ 내 활동 모아보기</div>
+      <button id="myActivityCloseBtn">✕</button>
+    </div>
+    <div class="search-category-row" id="myActivityCategoryRow">
+      <button class="activity-cat-btn active" data-my-cat="all">전체</button>
+      <button class="activity-cat-btn" data-my-cat="post">내가 쓴 글</button>
+      <button class="activity-cat-btn" data-my-cat="comment">내가 쓴 댓글·답글</button>
+    </div>
+    <div class="search-results" id="myActivityResults"></div>
   </div>
 
   <div class="search-overlay hidden" id="searchOverlay">

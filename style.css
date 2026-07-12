@@ -799,12 +799,12 @@
   display:flex; gap:8px; padding:12px 20px; overflow-x:auto;
   -webkit-overflow-scrolling:touch;
 }
-.search-cat-btn{
+.search-cat-btn, .activity-cat-btn{
   flex-shrink:0; background:var(--white); border:1.5px solid #F0E4E9; border-radius:9px;
   padding:7px 14px; font-size:15px; color:var(--plum-soft); cursor:pointer;
   font-family:'DungGeunMo',sans-serif;
 }
-.search-cat-btn.active{ background:var(--pink); border-color:var(--pink); color:var(--white); font-weight:600; }
+.search-cat-btn.active, .activity-cat-btn.active{ background:var(--pink); border-color:var(--pink); color:var(--white); font-weight:600; }
 
 .filter-chip-row{ display:flex; gap:8px; margin-bottom:12px; flex-wrap:wrap; }
 .filter-chip{
