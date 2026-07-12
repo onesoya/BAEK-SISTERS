@@ -1456,9 +1456,16 @@ function renderLetters() {
   let editingScheduleId = null;
   function renderScheduleFilterRow(){
     const row = document.getElementById('scheduleFilterRow');
-    row.innerHTML = ALL_NAMES.map(name => `
+    row.innerHTML = `<button type="button" class="chip-toggle ${scheduleFilterNames.length===0?'active':''}" data-schedule-filter-all="1">전체</button>` +
+      ALL_NAMES.map(name => `
       <button type="button" class="chip-toggle color-${colorKeyOf(name)} ${scheduleFilterNames.includes(name)?'active':''}" data-schedule-filter-name="${name}">${name}</button>
     `).join('');
+    row.querySelector('[data-schedule-filter-all]').addEventListener('click', ()=>{
+      scheduleFilterNames = [];
+      renderScheduleFilterRow();
+      renderCalendar();
+      renderSchedule();
+    });
     row.querySelectorAll('[data-schedule-filter-name]').forEach(btn=>{
       btn.addEventListener('click', ()=>{
         const name = btn.dataset.scheduleFilterName;
