@@ -55,6 +55,7 @@ self.addEventListener('notificationclick', (event) => {
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windowClients) => {
       for (const client of windowClients) {
         if ('focus' in client) {
+          // 최신 페이지면 이 메시지를 받아서 탭 이동+스크롤+펼치기까지 다 해줌
           client.postMessage({
             type: 'navigate',
             tab: data.tab,
@@ -62,7 +63,14 @@ self.addEventListener('notificationclick', (event) => {
             commentTs: data.commentTs,
             replyTs: data.replyTs
           });
-          return client.focus();
+          client.focus();
+          // 혹시 페이지가 오래된 버전이라 위 메시지를 못 알아들어도,
+          // 이 주소 이동만큼은 되도록 이중 안전장치. (완전한 탭+스크롤은 못 해줘도
+          // 최소한 "안 열린다"는 느낌은 없어짐)
+          if ('navigate' in client) {
+            try { client.navigate(link); } catch (e) { /* 무시 */ }
+          }
+          return;
         }
       }
       if (clients.openWindow) return clients.openWindow(link);
