@@ -20,26 +20,11 @@ self.addEventListener('activate', (event) => {
 
 const messaging = firebase.messaging();
 
-// notification 필드는 삼성인터넷 등에서의 배송 안정성 때문에 계속 포함하지만,
-// 표시 자체는 우리가 직접 해서 tab/itemId 등 이동 정보(data)가 확실히 알림에
-// 붙도록 함.
-messaging.onBackgroundMessage((payload) => {
-  const notif = payload.notification || {};
-  const data = payload.data || {};
-  const title = notif.title || data.title || '백씨스터즈';
-  const options = {
-    body: notif.body || data.body || '',
-    icon: 'icon-180.png',
-    badge: 'favicon-32.png',
-    data: {
-      link: data.link || '/',
-      tab: data.tab || '',
-      itemId: data.itemId || '',
-      commentTs: data.commentTs || '',
-      replyTs: data.replyTs || ''
-    }
-  };
-  self.registration.showNotification(title, options);
+// notification 필드는 계속 포함해서 보내지만(배송 안정성), 여기서 직접
+// showNotification()을 부르진 않음 - 그러면 SDK 자동 표시랑 겹쳐서 두 번 뜸.
+// onBackgroundMessage는 "등록"만 해둬서 서비스워커가 푸시에 반응해 깨어있게 함.
+messaging.onBackgroundMessage(() => {
+  // 의도적으로 아무것도 안 함 (SDK 자동 표시에 맡김)
 });
 
 // 알림 클릭하면 해당 탭:게시글(:댓글:답글)로 이동.
@@ -47,7 +32,10 @@ messaging.onBackgroundMessage((payload) => {
 // 앱이 안 열려있으면 그냥 해시가 붙은 주소로 새로 열어.
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
-  const data = event.notification.data || {};
+  // Firebase SDK가 알림을 자동 표시할 때, data를 그대로 안 주고
+  // FCM_MSG라는 키 아래에 원본 페이로드를 통째로 감싸서 주는 경우가 있어서 둘 다 확인함.
+  const raw = event.notification.data || {};
+  const data = raw.FCM_MSG && raw.FCM_MSG.data ? raw.FCM_MSG.data : raw;
   const link = data.link || '/';
 
   event.waitUntil(
