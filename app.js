@@ -2751,6 +2751,20 @@ function startWatchers(){
     // (지연 로딩) 카드가 화면에 아직 없을 수 있음 -> 몇 번 재시도해서 나타나면 그때 스크롤.
     // 콜드 스타트(알림으로 앱이 아예 새로 켜지는 경우)는 로그인 확인+데이터 연결까지
     // 시간이 좀 걸릴 수 있어서 넉넉하게 재시도함.
+
+    // 아이폰 사파리는 방금 DOM에 나타난/펼쳐진 요소로 바로 scrollIntoView를 부르면
+    // 레이아웃 계산이 덜 끝나서 씹히는 경우가 있어서, 화면이 그려질 시간을 한 번 더
+    // 확실하게 준 다음(requestAnimationFrame 두 번) 스크롤하도록 함.
+    const scrollToEl = (el) => {
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          el.scrollIntoView({behavior:'smooth', block:'center'});
+          el.classList.add('search-flash');
+          setTimeout(()=> el.classList.remove('search-flash'), 1600);
+        });
+      });
+    };
+
     let attempts = 0;
     const tryScroll = () => {
       const card = document.querySelector(`[data-item-id="${itemId}"]`);
@@ -2766,9 +2780,7 @@ function startWatchers(){
       if(detail) detail.classList.remove('hidden');
 
       if(!commentTs){
-        card.scrollIntoView({behavior:'smooth', block:'center'});
-        card.classList.add('search-flash');
-        setTimeout(()=> card.classList.remove('search-flash'), 1600);
+        scrollToEl(card);
         return;
       }
 
@@ -2783,22 +2795,18 @@ function startWatchers(){
       const tryScrollToAnchor = () => {
         const anchorEl = card.querySelector(`[data-comment-anchor="${anchorTs}"]`);
         if(anchorEl){
-          anchorEl.scrollIntoView({behavior:'smooth', block:'center'});
-          anchorEl.classList.add('search-flash');
-          setTimeout(()=> anchorEl.classList.remove('search-flash'), 1600);
+          scrollToEl(anchorEl);
         } else if(anchorAttempts < 15){
           anchorAttempts++;
           setTimeout(tryScrollToAnchor, 400);
         } else {
           // 끝까지 그 댓글을 못 찾으면(삭제됐거나 등) 게시글로라도 스크롤
-          card.scrollIntoView({behavior:'smooth', block:'center'});
-          card.classList.add('search-flash');
-          setTimeout(()=> card.classList.remove('search-flash'), 1600);
+          scrollToEl(card);
         }
       };
-      setTimeout(tryScrollToAnchor, 150);
+      setTimeout(tryScrollToAnchor, 200);
     };
-    setTimeout(tryScroll, 150);
+    setTimeout(tryScroll, 200);
   }
   function navigateToSearchResult(result){
     closeSearchOverlay();
