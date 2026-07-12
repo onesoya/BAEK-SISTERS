@@ -50,9 +50,9 @@ self.addEventListener('notificationclick', (event) => {
             replyTs: data.replyTs
           });
           client.focus();
-          if ('navigate' in client) {
-            try { client.navigate(link); } catch (e) { /* 무시 */ }
-          }
+          // client.navigate(link)는 예전엔 안전장치로 넣어뒀는데, 이게 페이지를
+          // 다시 불러오면서 postMessage로 막 끝낸 스크롤 위치를 초기화해버리는 것으로
+          // 의심돼서(탭 이동/게시글 열기는 되는데 스크롤만 안 되는 증상) 제거함.
           return;
         }
       }

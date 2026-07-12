@@ -2681,14 +2681,16 @@ function startWatchers(){
     if(renderMap[tab]) renderMap[tab]();
 
     // 위시/데이트/편지/게시판은 탭을 처음 열 때 그제서야 데이터를 불러오기 시작해서
-    // (지연 로딩) 카드가 화면에 아직 없을 수 있음 -> 몇 번 재시도해서 나타나면 그때 스크롤
+    // (지연 로딩) 카드가 화면에 아직 없을 수 있음 -> 몇 번 재시도해서 나타나면 그때 스크롤.
+    // 콜드 스타트(알림으로 앱이 아예 새로 켜지는 경우)는 로그인 확인+데이터 연결까지
+    // 시간이 좀 걸릴 수 있어서 넉넉하게 재시도함.
     let attempts = 0;
     const tryScroll = () => {
       const card = document.querySelector(`[data-item-id="${itemId}"]`);
       if(!card){
-        if(attempts < 10){
+        if(attempts < 20){
           attempts++;
-          setTimeout(tryScroll, 300);
+          setTimeout(tryScroll, 400);
         }
         return;
       }
@@ -2717,9 +2719,9 @@ function startWatchers(){
           anchorEl.scrollIntoView({behavior:'smooth', block:'center'});
           anchorEl.classList.add('search-flash');
           setTimeout(()=> anchorEl.classList.remove('search-flash'), 1600);
-        } else if(anchorAttempts < 8){
+        } else if(anchorAttempts < 15){
           anchorAttempts++;
-          setTimeout(tryScrollToAnchor, 300);
+          setTimeout(tryScrollToAnchor, 400);
         } else {
           // 끝까지 그 댓글을 못 찾으면(삭제됐거나 등) 게시글로라도 스크롤
           card.scrollIntoView({behavior:'smooth', block:'center'});
