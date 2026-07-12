@@ -284,6 +284,11 @@ async function uploadPhotos(photosArray, onProgress) {
   function escapeHTML(s){
     return (s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   }
+  // 댓글 버튼 옆 숫자용 - 댓글 개수 + 그 안의 답글 개수까지 다 합쳐서 셈
+  function totalCommentCount(comments){
+    const list = comments || [];
+    return list.reduce((sum, c) => sum + 1 + ((c.replies || []).length), 0);
+  }
   function pixelHeartSVG(filled, size, colorOverride){
     size = size || 15;
     const c = colorOverride || (filled ? '#9B7FE0' : '#D8C7CE');
@@ -865,7 +870,7 @@ function renderCalendar(){
     const likes = item.likes || [];
     const isLiked = identity && likes.includes(identity);
     const likeIcon = pixelHeartSVG(isLiked);
-    const commentCount = (item.comments || []).length;
+    const commentCount = totalCommentCount(item.comments);
     return `<div class="wish-card ${item.done?'wish-done':''}" data-item-id="${item.id}">
       <div class="wish-content">
         <div class="post-summary" data-post-toggle="${item.id}">
@@ -940,7 +945,7 @@ function renderCalendar(){
     const likes = item.likes || [];
     const isLiked = likes.includes(identity);
     const likeIcon = pixelHeartSVG(isLiked);
-    const commentCount = (item.comments || []).length;
+    const commentCount = totalCommentCount(item.comments);
 
     return `<div class="item-card" data-item-id="${item.id}">
       <div class="date-badge" style="background:var(--yellow-soft);"><div class="day">${d.day}</div><div class="mon">${d.mon}</div></div>
@@ -997,7 +1002,7 @@ function renderDateLog() {
     const likes = item.likes || [];
     const isLiked = identity && likes.includes(identity);
     const likeIcon = pixelHeartSVG(isLiked);
-    const commentCount = (item.comments || []).length;
+    const commentCount = totalCommentCount(item.comments);
     return `<div class="wish-card ${item.pinned?'pinned-card':''}" data-item-id="${item.id}">
       <div class="wish-content">
         <div class="post-summary" data-post-toggle="${item.id}">
@@ -1063,7 +1068,7 @@ function renderBoard() {
     const likes = item.likes || [];
     const isLiked = identity && likes.includes(identity);
     const likeIcon = pixelHeartSVG(isLiked);
-    const commentCount = (item.comments || []).length;
+    const commentCount = totalCommentCount(item.comments);
 
     return `<div class="wish-card" data-item-id="${item.id}">
       <div class="wish-content">
