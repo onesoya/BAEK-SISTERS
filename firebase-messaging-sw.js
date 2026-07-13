@@ -43,7 +43,18 @@ self.addEventListener('push', (event) => {
   };
 
   event.waitUntil(
-    self.registration.showNotification(title, options)
+    (async () => {
+      // 삼성인터넷은 Firebase의 기본 push 처리(이 안에서만 배지를 갱신하던 onBackgroundMessage
+      // 포함)를 stopImmediatePropagation()으로 막아버려서, 배지 갱신을 여기서 직접 해야 함
+      const unreadCount = Number(data.unreadCount);
+      if ('setAppBadge' in self.navigator && Number.isFinite(unreadCount)) {
+        try {
+          if (unreadCount > 0) await self.navigator.setAppBadge(unreadCount);
+          else if ('clearAppBadge' in self.navigator) await self.navigator.clearAppBadge();
+        } catch (e) { /* 배지 API 미지원 기기는 무시 */ }
+      }
+      await self.registration.showNotification(title, options);
+    })()
   );
 });
 
@@ -135,25 +146,13 @@ self.addEventListener('notificationclick', (event) => {
 // ============================================================================
 // 2. 서비스워커 갱신 및 상태 관리
 // ============================================================================
-const SW_VERSION = 'sw-2026.07.13-15';
+const SW_VERSION = 'sw-2026.07.13-17';
 
 self.addEventListener('install', () => {
   self.skipWaiting();
 });
 self.addEventListener('activate', (event) => {
-  event.waitUntil(
-    (async () => {
-      await clients.claim();
-      // 이전 버전에서 삼성인터넷에도 도착 시 저장 우회를 켜뒀던 적이 있어서,
-      // 그때 남았을 수 있는 pending 이동 정보를 새 버전 활성화 시점에 한 번 정리함
-      // (안 지우면 배포 후 처음 앱 켤 때 한 번 더 엉뚱한 곳으로 이동할 수 있음)
-      const userAgent = self.navigator.userAgent || '';
-      const isSamsungInternet = /Android/i.test(userAgent) && /SamsungBrowser/i.test(userAgent);
-      if (isSamsungInternet) {
-        await clearPendingNotif();
-      }
-    })()
-  );
+  event.waitUntil(clients.claim());
 });
 
 // ============================================================================
@@ -294,10 +293,12 @@ messaging.onBackgroundMessage(async (payload) => {
   }
 
   // 이 우회(도착 시 미리 저장)는 notificationclick이 아예 안 터지는 아이폰 전용임.
-  // 삼성인터넷도 한 번 포함시켜봤는데, 삼성인터넷은 notificationclick + 강제 navigate()
-  // 조합만으로 이미 정상 작동하는 게 확인됐음 - 그런데 이 우회까지 같이 켜져있으면
-  // "알림 안 눌러도 앱 아이콘으로 열면 최신 게시글로 잠깐 이동했다가 홈으로 되돌아오는"
-  // 증상이 생겨서(두 우회가 동시에 작동하며 충돌), 다시 아이폰 전용으로 좁힘.
+  // 삼성인터넷은 notificationclick 자체는 정상 실행되고(안 눌러도 자동 이동하는 부작용을
+  // 피하려고 여기 포함 안 시킴), 최종적으로는 아래 구조로 해결됨:
+  // notificationclick에서 pending 저장 -> postMessage는 안 보내고 focus()로 안드로이드
+  // 작업 복원을 먼저 완료 -> 앱 복귀 후 0.7/1.5/2.6초 지연 재확인으로 pending을 가져감.
+  // (예전엔 postMessage를 먼저 보내거나 강제 navigate()를 썼었는데, 안드로이드의 작업
+  // 복원 과정과 충돌해서 지금 방식으로 정착함 - 되돌리지 않도록 주의)
   const userAgent = self.navigator.userAgent || '';
   const isIPhone = /iPhone|iPod/i.test(userAgent);
   if (!isIPhone) return;

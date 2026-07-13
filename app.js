@@ -36,13 +36,17 @@ db.enablePersistence()
   const IS_SAMSUNG_INTERNET = /Android/i.test(USER_AGENT) && /SamsungBrowser/i.test(USER_AGENT);
   let lastHandledSamsungPushKey = '';
   let samsungPendingClearTimer = null;
+  // 로그인 확인보다 서비스워커 알림 이동정보가 먼저 도착했을 때 잠시 보관
+  let deferredNavigateMessage = null;
+  // setupPushNotifications()가 여러 번 불려도 onMessage 리스너가 중복 등록되지 않게
+  let foregroundMessageUnsubscribe = null;
 
   // 4인 신원 체계
   const PERSON_COLOR = { '소정':'yellow', '지수':'red', '운빈':'green', '운경':'blue' };
   const ALL_NAMES = ['소정','지수','운빈','운경'];
   // 코드 새로 줄 때마다 이 값 올림 - 홈 화면 맨 아래에 표시돼서, 최신 버전이 실제로
   // 적용됐는지 앱만 열어봐도 바로 확인할 수 있게 해둠.
-  const APP_VERSION = '2026.07.13-26';
+  const APP_VERSION = '2026.07.13-31';
   function colorKeyOf(name){ return PERSON_COLOR[name] || 'yellow'; }
   
   async function searchLocations(query){
@@ -298,14 +302,28 @@ async function uploadPhotos(photosArray, onProgress) {
     return explicit;
   }
 
+  // 백씨스터즈랑 벅구와 복덩이 앱 둘 다 onesoya.github.io 아래에 있어서(경로는 달라도)
+  // localStorage는 "출처(origin)" 단위로 공유됨 - 그래서 deviceId, draft_* 같은 흔한
+  // 이름의 키를 그냥 쓰면 두 앱이 서로의 값을 덮어쓸 수 있음. 이 앱 전용 접두사를 붙여서 분리함.
+  const STORAGE_PREFIX = 'baek_sisters__';
+  function appStorageKey(key){
+    return STORAGE_PREFIX + key;
+  }
+
   // 기기별로 안정적인 ID를 하나 만들어서 localStorage에 저장해둠 (브라우저 데이터를
   // 지우지 않는 한 계속 같은 값 - 같은 사람이 여러 기기에 로그인해도 기기마다 각자의
   // 알림 토큰을 따로 저장/관리할 수 있게 해줌)
   function getOrCreateDeviceId(){
-    let id = localStorage.getItem('deviceId');
+    const key = appStorageKey('deviceId');
+    let id = localStorage.getItem(key);
     if(!id){
-      id = 'dev_' + Date.now() + '_' + Math.random().toString(36).slice(2, 10);
-      localStorage.setItem('deviceId', id);
+      // 접두사 붙이기 전 공용 키에 값이 있었다면 한 번 가져와서 전용 키로 옮김
+      // (기존에 등록해둔 기기 토큰 문서가 갑자기 고아가 되지 않도록)
+      id = localStorage.getItem('deviceId');
+      if(!id){
+        id = 'dev_' + Date.now() + '_' + Math.random().toString(36).slice(2, 10);
+      }
+      localStorage.setItem(key, id);
     }
     return id;
   }
@@ -386,8 +404,9 @@ async function uploadPhotos(photosArray, onProgress) {
   // 알림 클릭 등으로 화면이 예상치 못하게 새로고침돼도 작성 중이던 글이 안 날아가게,
   // 입력할 때마다 브라우저에 조용히 임시저장해두고 화면이 새로 열릴 때 복원함.
   function setupDraftAutosave(storageKey, fieldIds){
+    const finalStorageKey = appStorageKey(storageKey);
     try{
-      const saved = localStorage.getItem(storageKey);
+      const saved = localStorage.getItem(finalStorageKey);
       if(saved){
         const data = JSON.parse(saved);
         fieldIds.forEach(id => {
@@ -406,7 +425,7 @@ async function uploadPhotos(photosArray, onProgress) {
         const el = document.getElementById(id);
         if(el) data[id] = el.value;
       });
-      try{ localStorage.setItem(storageKey, JSON.stringify(data)); }catch(e){ /* 무시 */ }
+      try{ localStorage.setItem(finalStorageKey, JSON.stringify(data)); }catch(e){ /* 무시 */ }
     };
     fieldIds.forEach(id => {
       const el = document.getElementById(id);
@@ -414,7 +433,7 @@ async function uploadPhotos(photosArray, onProgress) {
     });
   }
   function clearDraftAutosave(storageKey){
-    try{ localStorage.removeItem(storageKey); }catch(e){ /* 무시 */ }
+    try{ localStorage.removeItem(appStorageKey(storageKey)); }catch(e){ /* 무시 */ }
   }
 
   function tryConsumePendingScroll(){
@@ -617,11 +636,7 @@ async function uploadPhotos(photosArray, onProgress) {
   // 화면이 다시 보이게 되는 걸 알려주는 이벤트들 - 여러 번 호출부에서 등록하지 않고
   // 여기서 한 번만 전역으로 등록해둠 (기명 함수라 중복 등록은 원래도 안 됐지만, 구조상 더 깔끔하게)
   function checkPendingPush(){
-    if('serviceWorker' in navigator){
-      navigator.serviceWorker.ready.then(reg=>{
-        if(reg.active) reg.active.postMessage({ type: 'CHECK_PENDING_NOTIF' });
-      });
-    }
+    postToActiveServiceWorker({ type: 'CHECK_PENDING_NOTIF' });
   }
 
   // 화면 복귀 시 예약된 재확인 타이머 - 한 번만 확인하고 끝내지 않고, 아이폰에서
@@ -1763,11 +1778,11 @@ function renderLetters() {
   }
   function activateTab(tabName){
     const panel = document.getElementById('panel-'+tabName);
-    if(!panel) return;
+    if(!panel) return false;
     const currentTab = getCurrentActiveTab();
     if(currentTab && currentTab !== tabName && hasUnsavedDraft(currentTab)){
       const proceed = confirm('작성 중인 내용이 있어.\n다른 탭으로 이동하면 지금 쓴 내용이 사라져.\n\n그래도 이동할까?');
-      if(!proceed) return;
+      if(!proceed) return false;
       resetDraftForTab(currentTab);
     }
     // 떠나는 탭에서 펼쳐뒀던 게시물/댓글창/답글창은 상태까지 완전히 초기화해서,
@@ -1802,6 +1817,7 @@ function renderLetters() {
       b.classList.toggle('active', b.dataset.tab === tabName);
     });
     if(typeof startCollectionWatcher === 'function') startCollectionWatcher(tabName);
+    return true;
   }
   function activateTabFromHash(){
     const hash = window.location.hash.replace('#','');
@@ -1827,52 +1843,78 @@ function renderLetters() {
     else activateTab('schedule');
   });
   window.addEventListener('hashchange', activateTabFromHash);
+  async function postToActiveServiceWorker(message){
+    if(!('serviceWorker' in navigator)) return false;
+    try{
+      // ready는 서비스워커가 아예 등록된 적 없는 사용자한텐 영원히 안 풀리는 약속이라
+      // (알림을 한 번도 허용 안 한 사람 등), getRegistration()으로 먼저 확인하고
+      // 그런 경우엔 조용히 포기함
+      const registration = await navigator.serviceWorker.getRegistration();
+      const worker = navigator.serviceWorker.controller || (registration && registration.active);
+      if(!worker) return false;
+      worker.postMessage(message);
+      return true;
+    }catch(e){
+      return false;
+    }
+  }
+
+  function clearPendingNavigateInServiceWorker(){
+    postToActiveServiceWorker({ type: 'CLEAR_PENDING_NOTIF' });
+    samsungPendingClearTimer = null;
+  }
+
+  function handleServiceWorkerNavigate(msg){
+    if(!msg || msg.type !== 'navigate' || !msg.tab) return;
+
+    // 로그인 확인이 아직 안 끝났다면 이동정보를 잃지 않고 보관.
+    // 이 상태에서는 pending도 지우지 않음 (로그인 완료 후 다시 이 함수가 불려서 처리됨)
+    if(!identity){
+      deferredNavigateMessage = msg;
+      return;
+    }
+
+    const pushKey = [
+      msg.notifId || '', msg.tab || '', msg.itemId || '', msg.commentTs || '', msg.replyTs || ''
+    ].join('|');
+    const isDuplicateSamsungDelivery = IS_SAMSUNG_INTERNET && pushKey === lastHandledSamsungPushKey;
+
+    // 삼성인터넷은 pending을 여러 차례(0.7/1.5/2.6초) 확인하므로,
+    // 같은 알림을 같은 페이지에서 반복 이동시키지 않게 막음
+    if(!isDuplicateSamsungDelivery){
+      if(IS_SAMSUNG_INTERNET) lastHandledSamsungPushKey = pushKey;
+
+      const navigated = msg.itemId ? navigateToItem(msg.tab, msg.itemId, msg.commentTs, msg.replyTs) : activateTab(msg.tab);
+      // 잠금화면/알림창 알림을 눌러서 들어온 거면, 그 알림도 Firestore에서 읽음 처리함.
+      // 단, 작성 중인 내용 때문에 이동 자체가 취소됐다면 읽음 처리도 하지 않음
+      // (취소했는데 알림만 사라지면 헷갈리니까)
+      if(msg.notifId && navigated) markNotifRead(msg.notifId);
+    }
+
+    if(IS_SAMSUNG_INTERNET){
+      // 복귀 도중 삼성인터넷이 화면을 다시 복원하더라도, 뒤이은 재확인(1.5초/2.6초)이
+      // 여전히 같은 정보를 찾아 다시 적용할 수 있도록 조금 더 오래 유지해뒀다가 지움.
+      // 매번 타이머를 새로 시작해야 함 - 안 그러면 3.5초 이내에 알림 두 개가 연속으로
+      // 오면, 첫 번째 타이머가 두 번째 알림의 pending까지 너무 일찍 지워버릴 수 있음
+      if(samsungPendingClearTimer) clearTimeout(samsungPendingClearTimer);
+      samsungPendingClearTimer = setTimeout(clearPendingNavigateInServiceWorker, 3500);
+    } else {
+      // 다른 브라우저는 기존처럼 즉시 정리
+      // (안 지우면 나중에 전혀 상관없는 시점에 이 알림이 다시 튀어나올 수 있음)
+      clearPendingNavigateInServiceWorker();
+    }
+  }
+
   if('serviceWorker' in navigator){
     navigator.serviceWorker.addEventListener('message', (event)=>{
-      if(event.data && event.data.type === 'navigate' && event.data.tab){
-        const pushKey = [
-          event.data.notifId || '',
-          event.data.tab || '',
-          event.data.itemId || '',
-          event.data.commentTs || '',
-          event.data.replyTs || ''
-        ].join('|');
-
-        const isDuplicateSamsungDelivery = IS_SAMSUNG_INTERNET && pushKey === lastHandledSamsungPushKey;
-
-        // 삼성인터넷은 pending을 여러 차례(0.7/1.5/2.6초) 확인하므로,
-        // 같은 알림을 같은 페이지에서 반복 이동시키지 않게 막음
-        if(!isDuplicateSamsungDelivery){
-          if(IS_SAMSUNG_INTERNET) lastHandledSamsungPushKey = pushKey;
-
-          if(event.data.itemId) navigateToItem(event.data.tab, event.data.itemId, event.data.commentTs, event.data.replyTs);
-          else activateTab(event.data.tab);
-          // 잠금화면/알림창 알림을 눌러서 들어온 거면, 그 알림도 Firestore에서 읽음 처리함
-          if(event.data.notifId) markNotifRead(event.data.notifId);
-        }
-
-        const clearPendingInServiceWorker = () => {
-          if(navigator.serviceWorker.controller){
-            navigator.serviceWorker.controller.postMessage({ type: 'CLEAR_PENDING_NOTIF' });
-          }
-          samsungPendingClearTimer = null;
-        };
-
-        if(IS_SAMSUNG_INTERNET){
-          // 복귀 도중 삼성인터넷이 화면을 다시 복원하더라도, 뒤이은 재확인(1.5초/2.6초)이
-          // 여전히 같은 정보를 찾아 다시 적용할 수 있도록 조금 더 오래 유지해뒀다가 지움
-          if(!samsungPendingClearTimer){
-            samsungPendingClearTimer = setTimeout(clearPendingInServiceWorker, 3500);
-          }
-        } else {
-          // 다른 브라우저는 기존처럼 즉시 정리
-          // (안 지우면 나중에 전혀 상관없는 시점에 이 알림이 다시 튀어나올 수 있음)
-          clearPendingInServiceWorker();
-        }
+      const msg = event.data;
+      if(msg && msg.type === 'navigate'){
+        handleServiceWorkerNavigate(msg);
+        return;
       }
-      if(event.data && event.data.type === 'SW_VERSION'){
+      if(msg && msg.type === 'SW_VERSION'){
         const tag = document.getElementById('appVersionTag');
-        if(tag) tag.textContent = `v${APP_VERSION} · ${event.data.version}`;
+        if(tag) tag.textContent = `v${APP_VERSION} · ${msg.version}`;
       }
     });
   }
@@ -1880,8 +1922,63 @@ function renderLetters() {
   function updateIdentityChip(){
     document.getElementById('identityChip').textContent = identity ? `나는 ${identity}` : '나는 ...';
   }
-  document.getElementById('identityChip').addEventListener('click', ()=>{
-    if(confirm('로그아웃할까?')) firebase.auth().signOut();
+  function clearTransientNavigationState(){
+    if(samsungPendingClearTimer){
+      clearTimeout(samsungPendingClearTimer);
+      samsungPendingClearTimer = null;
+    }
+    resumeRetryTimers.forEach((timer)=> clearTimeout(timer));
+    resumeRetryTimers = [];
+    deferredNavigateMessage = null;
+    lastHandledSamsungPushKey = '';
+    clearScrollState();
+
+    // 이전 계정의 포그라운드 알림 토스트도 완전히 정리 (드물지만, 토스트 떠있는 채로
+    // 바로 로그아웃하고 다른 계정으로 빠르게 로그인하면 잠깐 다시 보일 수 있었음)
+    if(pushToastTimer){
+      clearTimeout(pushToastTimer);
+      pushToastTimer = null;
+    }
+    pushToastTab = null;
+    pushToastItemId = null;
+    pushToastCommentTs = null;
+    pushToastReplyTs = null;
+    pushToastNotifId = null;
+    const toast = document.getElementById('pushToast');
+    if(toast){
+      toast.classList.add('hidden');
+      toast.classList.remove('centered');
+    }
+
+    // 서비스워커 IndexedDB에 남아 있는 이동정보도 정리
+    postToActiveServiceWorker({ type: 'CLEAR_PENDING_NOTIF' });
+  }
+
+  async function logoutCurrentUser(){
+    const oldIdentity = identity;
+    const deviceId = getOrCreateDeviceId();
+    try{
+      // 로그아웃 전에 기존 계정의 이 기기 푸시 등록을 삭제 (다른 계정으로 다시 로그인해도
+      // 예전 계정 알림이 이 기기로 계속 오는 것을 방지)
+      if(oldIdentity){
+        await db.collection('fcmTokens').doc(oldIdentity).collection('devices').doc(deviceId)
+          .delete().catch((err)=>console.warn('기기 알림 등록 삭제 실패', err));
+      }
+    } finally {
+      if(foregroundMessageUnsubscribe){
+        foregroundMessageUnsubscribe();
+        foregroundMessageUnsubscribe = null;
+      }
+      clearTransientNavigationState();
+      stopAllWatchers();
+      identity = null;
+      updateIdentityChip();
+      await firebase.auth().signOut();
+    }
+  }
+  document.getElementById('identityChip').addEventListener('click', async ()=>{
+    if(!confirm('로그아웃할까?')) return;
+    await logoutCurrentUser();
   });
   let loginInProgress = false;
   document.getElementById('googleLoginBtn').addEventListener('click', ()=>{
@@ -2578,11 +2675,18 @@ function renderLetters() {
 
 
 function watch(query, collectionName, onData){
-    query.onSnapshot(snap=>{
+    const unsubscribe = query.onSnapshot(snap=>{
       const items = [];
       snap.forEach(doc=> items.push({ id: doc.id, ...doc.data() }));
       onData(items);
     }, err=>{ console.error(collectionName+' 구독 오류', err); });
+    return rememberUnsubscribe(unsubscribe);
+  }
+
+  let unsubscribeFns = [];
+  function rememberUnsubscribe(unsubscribe){
+    if(typeof unsubscribe === 'function') unsubscribeFns.push(unsubscribe);
+    return unsubscribe;
   }
 
   let watchersStarted = false;
@@ -2612,53 +2716,70 @@ function watch(query, collectionName, onData){
   let pushToastItemId = null;
   let pushToastCommentTs = null;
   let pushToastReplyTs = null;
-  function showPushToast(title, tab, itemId, commentTs, replyTs, centered){
+  let pushToastNotifId = null;
+  function showPushToast(title, tab, itemId, commentTs, replyTs, centered, notifId){
     pushToastTab = tab || null;
     pushToastItemId = itemId || null;
     pushToastCommentTs = commentTs || null;
     pushToastReplyTs = replyTs || null;
+    pushToastNotifId = notifId || null;
     document.getElementById('pushToastTitle').textContent = title || '';
     document.getElementById('pushToastBody').textContent = '';
     const toast = document.getElementById('pushToast');
     toast.classList.toggle('centered', !!centered);
     toast.classList.remove('hidden');
     clearTimeout(pushToastTimer);
-    pushToastTimer = setTimeout(()=>{ toast.classList.add('hidden'); }, 5000);
+    pushToastTimer = setTimeout(()=>{ toast.classList.add('hidden'); pushToastNotifId = null; }, 5000);
   }
   document.getElementById('pushToast').addEventListener('click', ()=>{
     document.getElementById('pushToast').classList.add('hidden');
     clearTimeout(pushToastTimer);
-    if(pushToastItemId && pushToastTab) navigateToItem(pushToastTab, pushToastItemId, pushToastCommentTs, pushToastReplyTs);
-    else if(pushToastTab) activateTab(pushToastTab);
+    const notifId = pushToastNotifId;
+    pushToastNotifId = null;
+    const navigated = (pushToastItemId && pushToastTab)
+      ? navigateToItem(pushToastTab, pushToastItemId, pushToastCommentTs, pushToastReplyTs)
+      : (pushToastTab ? activateTab(pushToastTab) : false);
+    // 작성 중인 내용 때문에 이동이 취소됐다면 읽음 처리도 하지 않음
+    if(notifId && navigated) markNotifRead(notifId);
   });
 
   async function setupPushNotifications(){
     try{
+      // 로그인 사용자가 확정되기 전에는 토큰을 저장하지 않음
+      if(!identity) return;
       if(!('serviceWorker' in navigator) || !('Notification' in window)) return;
-      const registration = await navigator.serviceWorker.register('firebase-messaging-sw.js');
+
+      await navigator.serviceWorker.register('firebase-messaging-sw.js');
       // 방금 처음 등록된 서비스워커는 install/activate가 아직 안 끝나서
-      // registration.active가 이 시점엔 null일 수 있음 (특히 이 기기에서 처음 쓰는 경우).
-      // navigator.serviceWorker.ready는 "활성화까지 확실히 끝난" 워커를 기다려줌.
-      navigator.serviceWorker.ready.then(reg => {
-        if(reg.active) reg.active.postMessage({ type: 'GET_SW_VERSION' });
-      });
-      const permission = await Notification.requestPermission();
+      // register()가 돌려주는 registration의 active가 이 시점엔 null일 수 있음
+      // (특히 이 기기에서 처음 쓰는 경우). navigator.serviceWorker.ready는
+      // "활성화까지 확실히 끝난" 워커를 기다려주므로, 이걸 getToken()에도 그대로 씀.
+      const registration = await navigator.serviceWorker.ready;
+      if(registration.active) registration.active.postMessage({ type: 'GET_SW_VERSION' });
+
+      const permission = Notification.permission === 'granted' ? 'granted' : await Notification.requestPermission();
       if(permission !== 'granted') return;
       const messaging = firebase.messaging();
       const token = await messaging.getToken({ vapidKey: VAPID_KEY, serviceWorkerRegistration: registration });
       if(token){
         const deviceId = getOrCreateDeviceId();
-        await db.collection('fcmTokens').doc(identity).collection('devices').doc(deviceId)
-          .set({ token, updatedAt: Date.now(), userAgent: navigator.userAgent || '' });
+        const devicesRef = db.collection('fcmTokens').doc(identity).collection('devices');
+        // 예전 버전에서 다른 deviceId로 같은 토큰이 저장돼있을 수 있어서(예: 저장 키
+        // 마이그레이션 과정 등), 같은 사용자 안에서 같은 토큰의 중복 문서를 정리함
+        // (안 지우면 같은 알림이 그 기기로 두 번 갈 수 있음)
+        const sameTokenSnap = await devicesRef.where('token', '==', token).get();
+        const batch = db.batch();
+        sameTokenSnap.forEach((doc) => { if(doc.id !== deviceId) batch.delete(doc.ref); });
+        batch.set(devicesRef.doc(deviceId), { token, updatedAt: Date.now(), userAgent: navigator.userAgent || '' }, { merge: true });
+        await batch.commit();
       }
-      messaging.onMessage((payload)=>{
-        showPushToast(
-          payload.data && payload.data.title,
-          payload.data && payload.data.tab,
-          payload.data && payload.data.itemId,
-          payload.data && payload.data.commentTs,
-          payload.data && payload.data.replyTs
-        );
+      if(foregroundMessageUnsubscribe){
+        foregroundMessageUnsubscribe();
+        foregroundMessageUnsubscribe = null;
+      }
+      foregroundMessageUnsubscribe = messaging.onMessage((payload)=>{
+        const data = payload.data || {};
+        showPushToast(data.title, data.tab, data.itemId, data.commentTs, data.replyTs, false, data.notifId);
       });
     }catch(e){
       console.error('푸시 알림 설정 실패', e);
@@ -2697,7 +2818,7 @@ function startWatchers(){
     // 다만 홈 화면의 "최근 활동/1년 전 오늘" 기능을 위해, 잠깐 쉬는 시간(유휴시간)에
     // 백그라운드로 조용히 불러와 두기는 함 (탭을 누르면 그 즉시 당겨서 불러옴).
     const lazyCollections = ['wish', 'datelog', 'letter', 'board'];
-    const loadRestInBackground = () => lazyCollections.forEach(startCollectionWatcher);
+    const loadRestInBackground = () => { if(identity) lazyCollections.forEach(startCollectionWatcher); };
     if('requestIdleCallback' in window){
       requestIdleCallback(loadRestInBackground, {timeout: 2000});
     } else {
@@ -2706,12 +2827,14 @@ function startWatchers(){
   }
 
   function watchAnniversaries(){
-    db.collection('anniversaries').onSnapshot(snap=>{
-      anniversaries = [];
-      snap.forEach(doc=> anniversaries.push({ id: doc.id, ...doc.data() }));
-      renderHome();
-      renderAnnivExistingList();
-    }, err=>console.error('기념일 구독 실패', err));
+    rememberUnsubscribe(
+      db.collection('anniversaries').onSnapshot(snap=>{
+        anniversaries = [];
+        snap.forEach(doc=> anniversaries.push({ id: doc.id, ...doc.data() }));
+        renderHome();
+        renderAnnivExistingList();
+      }, err=>console.error('기념일 구독 실패', err))
+    );
   }
 
   // ---- 알림함 (안 읽은 알림 배지 + 목록) ----
@@ -2719,15 +2842,17 @@ function startWatchers(){
 
   function watchNotifications(){
     if(!identity) return;
-    db.collection('notifications').doc(identity).collection('items')
-      .where('read', '==', false)
-      .onSnapshot(snap => {
-        unreadNotifications = [];
-        snap.forEach(doc => unreadNotifications.push({ id: doc.id, ...doc.data() }));
-        unreadNotifications.sort((a,b) => (b.createdAt||0) - (a.createdAt||0));
-        updateNotifBadge();
-        renderNotifResults();
-      }, err => console.error('알림함 구독 실패', err));
+    rememberUnsubscribe(
+      db.collection('notifications').doc(identity).collection('items')
+        .where('read', '==', false)
+        .onSnapshot(snap => {
+          unreadNotifications = [];
+          snap.forEach(doc => unreadNotifications.push({ id: doc.id, ...doc.data() }));
+          unreadNotifications.sort((a,b) => (b.createdAt||0) - (a.createdAt||0));
+          updateNotifBadge();
+          renderNotifResults();
+        }, err => console.error('알림함 구독 실패', err))
+    );
   }
 
   function updateNotifBadge(){
@@ -2754,9 +2879,7 @@ function startWatchers(){
       .update({ read: true }).catch(err => console.error('알림 읽음 처리 실패', err));
     // 이 알림을 보낼 때 같은 ID를 "태그"로 같이 심어뒀어서, 그 태그로 잠금화면/알림창의
     // 해당 알림도 정확히 콕 집어서 지울 수 있음
-    if('serviceWorker' in navigator && navigator.serviceWorker.controller){
-      navigator.serviceWorker.controller.postMessage({ type: 'CLOSE_NOTIFICATION', tag: notifId });
-    }
+    postToActiveServiceWorker({ type: 'CLOSE_NOTIFICATION', tag: notifId });
   }
 
   // 앱이 완전히 꺼진 상태에서 알림을 눌러 콜드 스타트된 경우, 서비스워커의 postMessage를
@@ -2798,9 +2921,12 @@ function startWatchers(){
         const idx = Number(el.dataset.notifIdx);
         const n = unreadNotifications[idx];
         if(!n) return;
-        markNotifRead(n.id);
-        closeNotifOverlay();
-        navigateToItem(n.tab, n.itemId, n.commentTs, n.replyTs);
+        const navigated = navigateToItem(n.tab, n.itemId, n.commentTs, n.replyTs);
+        // 작성 중인 내용 때문에 이동이 취소됐다면, 오버레이도 안 닫고 읽음 처리도 안 함
+        if(navigated){
+          closeNotifOverlay();
+          markNotifRead(n.id);
+        }
       });
     });
     container.querySelectorAll('[data-notif-dismiss]').forEach(btn=>{
@@ -2822,16 +2948,22 @@ function startWatchers(){
   }
   document.getElementById('notifBellBtn').addEventListener('click', openNotifOverlay);
   document.getElementById('notifCloseBtn').addEventListener('click', closeNotifOverlay);
-  document.getElementById('notifClearAllBtn').addEventListener('click', ()=>{
+  document.getElementById('notifClearAllBtn').addEventListener('click', async ()=>{
     if(unreadNotifications.length === 0) return;
     if(!confirm(`안 읽은 알림 ${unreadNotifications.length}개를 전부 지울까?`)) return;
     const batch = db.batch();
     unreadNotifications.forEach(n => {
       batch.delete(db.collection('notifications').doc(identity).collection('items').doc(n.id));
     });
-    batch.commit().catch(err => console.error('알림 전체 삭제 실패', err));
-    if('serviceWorker' in navigator && navigator.serviceWorker.controller){
-      navigator.serviceWorker.controller.postMessage({ type: 'CLEAR_ALL_NOTIFICATIONS' });
+    try{
+      // Firestore 삭제가 성공한 뒤에만 시스템 알림을 닫음 (순서가 바뀌면, 네트워크
+      // 문제로 Firestore 삭제가 실패했을 때 시스템 알림만 사라지고 앱 안 알림함엔
+      // 그대로 남아있는 불일치가 생길 수 있음)
+      await batch.commit();
+      postToActiveServiceWorker({ type: 'CLEAR_ALL_NOTIFICATIONS' });
+    }catch(err){
+      console.error('알림 전체 삭제 실패', err);
+      alert('알림을 지우지 못했어. 잠시 후 다시 시도해줘.');
     }
   });
 
@@ -2889,11 +3021,13 @@ function startWatchers(){
   });
 
   function watchProfiles(){
-    db.collection('profiles').onSnapshot(snap=>{
-      profiles = {};
-      snap.forEach(doc=>{ profiles[doc.id] = doc.data(); });
-      renderStatusBoard();
-    }, err=>console.error('프로필 구독 실패', err));
+    rememberUnsubscribe(
+      db.collection('profiles').onSnapshot(snap=>{
+        profiles = {};
+        snap.forEach(doc=>{ profiles[doc.id] = doc.data(); });
+        renderStatusBoard();
+      }, err=>console.error('프로필 구독 실패', err))
+    );
   }
 
   async function ensureMyProfile(){
@@ -2906,6 +3040,29 @@ function startWatchers(){
   }
 
   const collectionWatchersStarted = { schedule:false, wish:false, datelog:false, letter:false, board:false };
+
+  function stopAllWatchers(){
+    const currentUnsubscribes = unsubscribeFns.splice(0);
+    currentUnsubscribes.forEach((unsubscribe)=>{
+      try{ unsubscribe(); }catch(e){ /* 이미 해제된 구독은 무시 */ }
+    });
+    watchersStarted = false;
+    visitWatchStarted = false;
+    Object.keys(collectionWatchersStarted).forEach((key)=>{ collectionWatchersStarted[key] = false; });
+    unreadNotifications = [];
+
+    // 로그아웃 후 다른 계정으로 로그인했을 때, 새 구독 데이터가 도착하기 전
+    // 아주 잠깐이라도 이전 계정 화면이 보이지 않도록 캐시된 데이터도 비움
+    // (앱 화면 자체는 로그인 게이트 뒤에 숨겨지므로 지금 당장 다시 그릴 필요는 없음)
+    schedule = []; wishes = []; dateLogs = []; letters = []; boards = []; anniversaries = [];
+    profiles = {};
+    openCommentSections.clear();
+    openPostDetails.clear();
+    openReplyInputs.clear();
+
+    updateNotifBadge();
+    renderNotifResults();
+  }
   function startCollectionWatcher(tabName){
     if(collectionWatchersStarted[tabName]) return;
     collectionWatchersStarted[tabName] = true;
@@ -3262,12 +3419,22 @@ function startWatchers(){
   const TAB_TO_COL = { wish:'wishlist', datelog:'datelog', board:'board', letter:'letters' };
 
   function navigateToItem(tab, itemId, commentTs, replyTs){
-    activateTab(tab);
+    if(!activateTab(tab)) return false; // 작성 중인 내용 때문에 이동이 취소됐으면 여기서 멈춤
 
     // 그 탭에 필터가 걸려있으면(예: 특정 사람 것만 보기), 알림으로 찾아온 게시글이
     // 필터에 가려서 화면에 안 그려질 수 있음 -> 무조건 "전체 보기"로 풀어서
     // 대상이 반드시 화면에 나타나게 함
-    if(tab === 'letter' && letterFilterTarget !== 'all'){
+    if(tab === 'schedule'){
+      // 일정은 사람 필터랑 별개로, 달력에서 특정 날짜를 눌러서 생기는 날짜 필터도 있음 -
+      // 이것도 안 풀면 "7월 15일만 보는 중"일 때 7월 20일 알림을 못 찾는 문제가 있었음
+      const hadScheduleFilter = !!calendarFilterDate || scheduleFilterNames.length > 0;
+      calendarFilterDate = null;
+      if(scheduleFilterNames.length > 0){
+        scheduleFilterNames = [];
+        renderScheduleFilterRow();
+      }
+      if(hadScheduleFilter) renderCalendar(); // 달력 자체에도 필터가 반영되니 다시 그림
+    } else if(tab === 'letter' && letterFilterTarget !== 'all'){
       letterFilterTarget = 'all';
       document.querySelectorAll('#letterFilterRow .filter-chip').forEach(b=>{
         b.classList.toggle('active', b.dataset.letterFilter === 'all');
@@ -3287,9 +3454,6 @@ function startWatchers(){
       document.querySelectorAll('#boardFilterRow [data-author-filter]').forEach(b=>{
         b.classList.toggle('active', b.dataset.authorFilter === 'all');
       });
-    } else if(tab === 'schedule' && scheduleFilterNames.length > 0){
-      scheduleFilterNames = [];
-      renderScheduleFilterRow();
     }
 
     openPostDetails.add(itemId); // 데이터가 아직 안 왔어도, 오면 열려있도록 미리 기억해둠
@@ -3389,6 +3553,7 @@ function startWatchers(){
 
       tryConsumePendingScroll();
     }, 500);
+    return true;
   }
   function navigateToSearchResult(result){
     closeSearchOverlay();
@@ -3544,21 +3709,23 @@ function startWatchers(){
   function watchVisitCounter(){
     if(visitWatchStarted) return;
     visitWatchStarted = true;
-    db.collection('stats').doc('visits').onSnapshot(doc=>{
-      const todayEl = document.getElementById('visitToday');
-      const totalEl = document.getElementById('visitTotal');
-      if(!todayEl || !totalEl) return;
-      const todayStr = localDateStr();
-      if(doc.exists){
-        const data = doc.data();
-        const todayCount = (data.todayDate === todayStr) ? (data.todayCount || 0) : 0;
-        todayEl.textContent = `Today ${todayCount}`;
-        totalEl.textContent = `Total ${data.total || 0}`;
-      } else {
-        todayEl.textContent = 'Today 0';
-        totalEl.textContent = 'Total 0';
-      }
-    }, err=>console.error('방문자 수 구독 실패', err));
+    rememberUnsubscribe(
+      db.collection('stats').doc('visits').onSnapshot(doc=>{
+        const todayEl = document.getElementById('visitToday');
+        const totalEl = document.getElementById('visitTotal');
+        if(!todayEl || !totalEl) return;
+        const todayStr = localDateStr();
+        if(doc.exists){
+          const data = doc.data();
+          const todayCount = (data.todayDate === todayStr) ? (data.todayCount || 0) : 0;
+          todayEl.textContent = `Today ${todayCount}`;
+          totalEl.textContent = `Total ${data.total || 0}`;
+        } else {
+          todayEl.textContent = 'Today 0';
+          totalEl.textContent = 'Total 0';
+        }
+      }, err=>console.error('방문자 수 구독 실패', err))
+    );
   }
 
   document.querySelectorAll('#letterFilterRow .filter-chip').forEach(btn=>{
@@ -3599,6 +3766,12 @@ function startWatchers(){
         startWatchers();
         activateTabFromHash();
         handleNotifQueryParam(); // 콜드 스타트 시 URL에 담겨온 notif ID 읽음 처리
+        // 로그인 전에 서비스워커 이동정보가 먼저 도착했다면 지금 처리
+        if(deferredNavigateMessage){
+          const msg = deferredNavigateMessage;
+          deferredNavigateMessage = null;
+          handleServiceWorkerNavigate(msg);
+        }
         trackVisit();
         watchVisitCounter();
         if('Notification' in window && Notification.permission === 'granted'){
@@ -3608,11 +3781,27 @@ function startWatchers(){
         }
       } else if(user && !EMAIL_MAP[user.email]){
         loginInProgress = false;
+        if(foregroundMessageUnsubscribe){
+          foregroundMessageUnsubscribe();
+          foregroundMessageUnsubscribe = null;
+        }
+        clearTransientNavigationState();
+        stopAllWatchers();
+        identity = null;
+        updateIdentityChip();
         firebase.auth().signOut();
         showGate('이 구글 계정은 사용할 수 없어.<br>백씨스터즈 멤버 계정으로만 로그인해줘.');
       } else if(!loginInProgress){
         // 로그인 처리 중에 이 콜백이 user=null 상태로 한 번 더 불릴 때가 있는데,
-        // 그때는 "로그인 중이야..." 문구를 이 기본 문구로 덮어쓰지 않게 함
+        // 그때는 "로그인 중이야..." 문구를 이 기본 문구로 덮어쓰지 않게 함.
+        // 여기서는 clearTransientNavigationState()를 부르지 않음 - 이 분기는 "아직
+        // 로그인 전" 상태에서 정상적으로도 매번 거치는 곳이라, 알림을 눌러서 앱에
+        // 들어왔지만 로그인이 필요한 경우 저장해둔 이동정보(특히 아이폰의 도착 시점
+        // 저장분)를 로그인도 하기 전에 지워버리면 안 됨. 명시적 로그아웃/차단된 계정
+        // 분기에서만 정리하면 됨.
+        stopAllWatchers();
+        identity = null;
+        updateIdentityChip();
         showGate('백씨스터즈 멤버만 쓸 수 있는 앱이야.<br>구글 계정으로 로그인해줘.');
       }
     });
