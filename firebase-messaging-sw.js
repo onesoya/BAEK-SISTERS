@@ -96,19 +96,19 @@ self.addEventListener('notificationclick', (event) => {
         const isSamsungInternet = /Android/i.test(userAgent) && /SamsungBrowser/i.test(userAgent);
 
         if (isSamsungInternet) {
-          // 삼성인터넷에서는 URL 강제 navigate를 쓰지 않음 (안드로이드가 앱의 최초 실행
-          // 주소를 다시 복원하면서 새 주소와 충돌하는 현상이 있었음). 대신 이제 알림
-          // 표시 자체를 우리 서비스워커가 직접 하므로(위 0번 push 리스너), 클릭도
-          // 확실히 이 notificationclick으로 들어옴 - 열려있는 모든 창에 새 정보를 전달.
-          appClients.forEach((client) => {
-            client.postMessage(navPayload);
-          });
-          const focusTarget = appClients.find((client) => client.focused) || appClients[0];
+          // 삼성인터넷은 postMessage로 새 이동 명령을 먼저 보내면, 그 직후 focus() 과정에서
+          // 안드로이드가 PWA 작업의 "최초 실행 상태"를 복원하면서 방금 적용한 이동 결과를
+          // 덮어써버리는 것으로 보임(focus()는 포커스만 줄 뿐 새 주소로 이동시키는 API가
+          // 아님). 그래서 여기서는 postMessage를 아예 안 보내고, 먼저 기존 작업을 화면에
+          // 완전히 복원시킨 다음, 앱이 복귀 시점에 CHECK_PENDING_NOTIF로 IndexedDB에 저장된
+          // 정보를 직접 가져가게 함 (savePendingNotif는 이미 위에서 실행됨, 유실 안 됨).
+          const focusTarget = appClients.find((client) => client.focused)
+            || appClients.find((client) => client.visibilityState === 'visible')
+            || appClients[0];
           try {
             await focusTarget.focus();
           } catch (e) {
-            // postMessage가 잠든 페이지에서 유실돼도, 위에서 IndexedDB에 저장했으므로
-            // 앱 복귀 후 CHECK_PENDING_NOTIF로 다시 복구됨
+            // focus가 실패하더라도 pending 데이터는 IndexedDB에 남아 있음
           }
           return;
         }
@@ -135,7 +135,7 @@ self.addEventListener('notificationclick', (event) => {
 // ============================================================================
 // 2. 서비스워커 갱신 및 상태 관리
 // ============================================================================
-const SW_VERSION = 'sw-2026.07.13-14';
+const SW_VERSION = 'sw-2026.07.13-15';
 
 self.addEventListener('install', () => {
   self.skipWaiting();

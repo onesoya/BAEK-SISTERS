@@ -32,12 +32,17 @@ db.enablePersistence()
   let pendingDateLogGeo = null;
   let searchQuery = '';
 
+  const USER_AGENT = navigator.userAgent || '';
+  const IS_SAMSUNG_INTERNET = /Android/i.test(USER_AGENT) && /SamsungBrowser/i.test(USER_AGENT);
+  let lastHandledSamsungPushKey = '';
+  let samsungPendingClearTimer = null;
+
   // 4인 신원 체계
   const PERSON_COLOR = { '소정':'yellow', '지수':'red', '운빈':'green', '운경':'blue' };
   const ALL_NAMES = ['소정','지수','운빈','운경'];
   // 코드 새로 줄 때마다 이 값 올림 - 홈 화면 맨 아래에 표시돼서, 최신 버전이 실제로
   // 적용됐는지 앱만 열어봐도 바로 확인할 수 있게 해둠.
-  const APP_VERSION = '2026.07.13-24';
+  const APP_VERSION = '2026.07.13-25';
   function colorKeyOf(name){ return PERSON_COLOR[name] || 'yellow'; }
   
   async function searchLocations(query){
@@ -631,12 +636,25 @@ async function uploadPhotos(photosArray, onProgress) {
       checkPendingPush();       // 놓친 알림 있는지 서비스워커에 확인
       tryConsumePendingScroll(); // 이미 이동 명령을 받았다면 스크롤도 다시 시도
     };
-    runResumeCheck();
-    resumeRetryTimers.push(
-      setTimeout(runResumeCheck, 300),
-      setTimeout(runResumeCheck, 1000),
-      setTimeout(runResumeCheck, 2000)
-    );
+
+    if(IS_SAMSUNG_INTERNET){
+      // 삼성인터넷은 focus() 과정에서 최초 실행 상태를 다시 복원할 수 있어서,
+      // 그 복원이 어느 정도 끝난 다음에 새 알림 정보를 확인하도록 함
+      // (복귀 즉시 확인하면 그 직후 복원 과정이 결과를 덮어써버리는 것으로 보임)
+      resumeRetryTimers.push(
+        setTimeout(runResumeCheck, 700),
+        setTimeout(runResumeCheck, 1500),
+        setTimeout(runResumeCheck, 2600)
+      );
+    } else {
+      // 아이폰·아이패드·그 외 브라우저는 기존 방식 유지
+      runResumeCheck();
+      resumeRetryTimers.push(
+        setTimeout(runResumeCheck, 300),
+        setTimeout(runResumeCheck, 1000),
+        setTimeout(runResumeCheck, 2000)
+      );
+    }
   }
 
   document.addEventListener('visibilitychange', () => {
@@ -1807,15 +1825,44 @@ function renderLetters() {
   if('serviceWorker' in navigator){
     navigator.serviceWorker.addEventListener('message', (event)=>{
       if(event.data && event.data.type === 'navigate' && event.data.tab){
-        if(event.data.itemId) navigateToItem(event.data.tab, event.data.itemId, event.data.commentTs, event.data.replyTs);
-        else activateTab(event.data.tab);
-        // 잠금화면/알림창 알림을 눌러서 들어온 거면, 그 알림도 Firestore에서 읽음 처리함
-        // (이게 없으면 눌러서 이동은 되는데 앱 알림함/배지엔 계속 안 읽은 걸로 남아있었음)
-        if(event.data.notifId) markNotifRead(event.data.notifId);
-        // 처리 완료했다고 서비스워커에 알려줘서, IndexedDB에 남아있던 기록을 지우게 함
-        // (안 지우면 나중에 전혀 상관없는 시점에 이 알림이 다시 튀어나올 수 있음)
-        if(navigator.serviceWorker.controller){
-          navigator.serviceWorker.controller.postMessage({ type: 'CLEAR_PENDING_NOTIF' });
+        const pushKey = [
+          event.data.notifId || '',
+          event.data.tab || '',
+          event.data.itemId || '',
+          event.data.commentTs || '',
+          event.data.replyTs || ''
+        ].join('|');
+
+        const isDuplicateSamsungDelivery = IS_SAMSUNG_INTERNET && pushKey === lastHandledSamsungPushKey;
+
+        // 삼성인터넷은 pending을 여러 차례(0.7/1.5/2.6초) 확인하므로,
+        // 같은 알림을 같은 페이지에서 반복 이동시키지 않게 막음
+        if(!isDuplicateSamsungDelivery){
+          if(IS_SAMSUNG_INTERNET) lastHandledSamsungPushKey = pushKey;
+
+          if(event.data.itemId) navigateToItem(event.data.tab, event.data.itemId, event.data.commentTs, event.data.replyTs);
+          else activateTab(event.data.tab);
+          // 잠금화면/알림창 알림을 눌러서 들어온 거면, 그 알림도 Firestore에서 읽음 처리함
+          if(event.data.notifId) markNotifRead(event.data.notifId);
+        }
+
+        const clearPendingInServiceWorker = () => {
+          if(navigator.serviceWorker.controller){
+            navigator.serviceWorker.controller.postMessage({ type: 'CLEAR_PENDING_NOTIF' });
+          }
+          samsungPendingClearTimer = null;
+        };
+
+        if(IS_SAMSUNG_INTERNET){
+          // 복귀 도중 삼성인터넷이 화면을 다시 복원하더라도, 뒤이은 재확인(1.5초/2.6초)이
+          // 여전히 같은 정보를 찾아 다시 적용할 수 있도록 조금 더 오래 유지해뒀다가 지움
+          if(!samsungPendingClearTimer){
+            samsungPendingClearTimer = setTimeout(clearPendingInServiceWorker, 3500);
+          }
+        } else {
+          // 다른 브라우저는 기존처럼 즉시 정리
+          // (안 지우면 나중에 전혀 상관없는 시점에 이 알림이 다시 튀어나올 수 있음)
+          clearPendingInServiceWorker();
         }
       }
       if(event.data && event.data.type === 'SW_VERSION'){
