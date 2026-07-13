@@ -40,7 +40,11 @@ self.addEventListener('notificationclick', (event) => {
       if (appClient) {
         // focus()가 실패하거나 늦어져도 메시지는 이미 전달되도록, postMessage를 먼저 보냄
         appClient.postMessage(navPayload);
-        try { await appClient.focus(); } catch (e) { /* 포커스 실패해도 무시 - 나중에 CHECK_PENDING_NOTIF로 복구됨 */ }
+        try {
+          await appClient.focus();
+        } catch (e) {
+          // 앱 복귀 후 IndexedDB 확인(CHECK_PENDING_NOTIF)으로 복구됨
+        }
         return;
       }
 
@@ -54,7 +58,7 @@ self.addEventListener('notificationclick', (event) => {
 // ============================================================================
 // 2. 서비스워커 갱신 및 상태 관리
 // ============================================================================
-const SW_VERSION = 'sw-2026.07.13-4';
+const SW_VERSION = 'sw-2026.07.13-5';
 
 self.addEventListener('install', () => {
   self.skipWaiting();

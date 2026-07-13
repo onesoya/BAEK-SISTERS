@@ -37,7 +37,7 @@ db.enablePersistence()
   const ALL_NAMES = ['소정','지수','운빈','운경'];
   // 코드 새로 줄 때마다 이 값 올림 - 홈 화면 맨 아래에 표시돼서, 최신 버전이 실제로
   // 적용됐는지 앱만 열어봐도 바로 확인할 수 있게 해둠.
-  const APP_VERSION = '2026.07.13-12';
+  const APP_VERSION = '2026.07.13-13';
   function colorKeyOf(name){ return PERSON_COLOR[name] || 'yellow'; }
   
   async function searchLocations(query){
@@ -441,16 +441,47 @@ async function uploadPhotos(photosArray, onProgress) {
       });
     }
   }
-  // 1) 화면이 꺼졌다가 다시 보이게 될 때 (주로 아이폰: 잠금 해제 등)
+
+  // 화면 복귀 시 예약된 재확인 타이머 - 한 번만 확인하고 끝내지 않고, 아이폰에서
+  // 서비스워커와의 연결이 조금 늦게 복구되는 경우를 대비해 몇 차례 더 재시도함.
+  let resumeRetryTimers = [];
+  function handleAppResume(){
+    if(document.visibilityState !== 'visible') return;
+    resumeRetryTimers.forEach(clearTimeout);
+    resumeRetryTimers = [];
+
+    const runResumeCheck = () => {
+      checkPendingPush();       // 놓친 알림 있는지 서비스워커에 확인
+      tryConsumePendingScroll(); // 이미 이동 명령을 받았다면 스크롤도 다시 시도
+    };
+    runResumeCheck();
+    resumeRetryTimers.push(
+      setTimeout(runResumeCheck, 300),
+      setTimeout(runResumeCheck, 1000),
+      setTimeout(runResumeCheck, 2000)
+    );
+  }
+
   document.addEventListener('visibilitychange', () => {
-    if(document.visibilityState === 'visible') checkPendingPush();
-    tryConsumePendingScroll();
+    if(document.visibilityState === 'visible') handleAppResume();
   });
-  // 2) 페이지가 아예 처음부터 다시 로딩될 때 (주로 안드로이드: 화면 꺼진 채 오래 있다가
-  //    탭이 통째로 정리(discard)됐다가 알림 클릭으로 다시 켜지는 경우)
-  window.addEventListener('load', checkPendingPush);
-  window.addEventListener('focus', tryConsumePendingScroll);
-  window.addEventListener('pageshow', tryConsumePendingScroll);
+  window.addEventListener('load', handleAppResume);
+  window.addEventListener('focus', handleAppResume);
+  window.addEventListener('pageshow', handleAppResume);
+
+  // 아이폰 PWA가 화면 복귀 이벤트(focus/pageshow/visibilitychange)를 전부 놓치는
+  // 경우까지 대비한 감시 장치. 화면이 꺼져있는 동안 멈췄던 타이머가 다시 움직이기
+  // 시작하면("시간 간격이 갑자기 벌어졌다 정상화됨") 앱이 복귀한 것으로 판단함.
+  // 평소엔 시간 차이만 계산하는 가벼운 작업이고, 복귀가 감지될 때만 확인 작업을 함.
+  let lastResumeTick = Date.now();
+  setInterval(() => {
+    const now = Date.now();
+    const timerWasSuspended = now - lastResumeTick > 2500;
+    lastResumeTick = now;
+    if(timerWasSuspended && document.visibilityState === 'visible'){
+      handleAppResume();
+    }
+  }, 1000);
 
   // 댓글창 HTML을 그려주는 공통 함수
   function renderCommentsHTML(item, colName) {
@@ -2372,7 +2403,12 @@ function watch(query, collectionName, onData){
     try{
       if(!('serviceWorker' in navigator) || !('Notification' in window)) return;
       const registration = await navigator.serviceWorker.register('firebase-messaging-sw.js');
-      if(registration.active) registration.active.postMessage({ type: 'GET_SW_VERSION' });
+      // 방금 처음 등록된 서비스워커는 install/activate가 아직 안 끝나서
+      // registration.active가 이 시점엔 null일 수 있음 (특히 이 기기에서 처음 쓰는 경우).
+      // navigator.serviceWorker.ready는 "활성화까지 확실히 끝난" 워커를 기다려줌.
+      navigator.serviceWorker.ready.then(reg => {
+        if(reg.active) reg.active.postMessage({ type: 'GET_SW_VERSION' });
+      });
       const permission = await Notification.requestPermission();
       if(permission !== 'granted') return;
       const messaging = firebase.messaging();
