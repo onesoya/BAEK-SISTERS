@@ -82,13 +82,25 @@ self.addEventListener('notificationclick', (event) => {
 // ============================================================================
 // 2. 서비스워커 갱신 및 상태 관리
 // ============================================================================
-const SW_VERSION = 'sw-2026.07.13-12';
+const SW_VERSION = 'sw-2026.07.13-13';
 
 self.addEventListener('install', () => {
   self.skipWaiting();
 });
 self.addEventListener('activate', (event) => {
-  event.waitUntil(clients.claim());
+  event.waitUntil(
+    (async () => {
+      await clients.claim();
+      // 이전 버전에서 삼성인터넷에도 도착 시 저장 우회를 켜뒀던 적이 있어서,
+      // 그때 남았을 수 있는 pending 이동 정보를 새 버전 활성화 시점에 한 번 정리함
+      // (안 지우면 배포 후 처음 앱 켤 때 한 번 더 엉뚱한 곳으로 이동할 수 있음)
+      const userAgent = self.navigator.userAgent || '';
+      const isSamsungInternet = /Android/i.test(userAgent) && /SamsungBrowser/i.test(userAgent);
+      if (isSamsungInternet) {
+        await clearPendingNotif();
+      }
+    })()
+  );
 });
 
 // ============================================================================
@@ -228,18 +240,14 @@ messaging.onBackgroundMessage(async (payload) => {
     } catch (e) { /* 무시 - 미지원 기기/브라우저일 수 있음 */ }
   }
 
-  // 이 우회는 notificationclick이 아예 안 터지는 기기/브라우저에 적용함.
-  // 처음엔 아이폰만 해당됐는데, 삼성인터넷도 화면 꺼진 채 잠든 설치형 PWA에서
-  // notificationclick 자체가 안 터지는 것으로 의심돼서 여기 포함시킴.
-  // 아이패드는 원래도 notificationclick이 정상 작동해서 그대로 뺴둠.
-  // 참고: 이 우회를 켜두면 "알림을 안 눌렀는데 나중에 앱 아이콘으로 직접 열었을 때
-  // 자동으로 최신 알림의 게시글로 이동해버리는" 부작용이 아이폰과 마찬가지로
-  // 삼성인터넷에서도 생길 수 있음 - notificationclick 발생 여부를 구분할 방법이 없어서
-  // 감수하는 트레이드오프임.
+  // 이 우회(도착 시 미리 저장)는 notificationclick이 아예 안 터지는 아이폰 전용임.
+  // 삼성인터넷도 한 번 포함시켜봤는데, 삼성인터넷은 notificationclick + 강제 navigate()
+  // 조합만으로 이미 정상 작동하는 게 확인됐음 - 그런데 이 우회까지 같이 켜져있으면
+  // "알림 안 눌러도 앱 아이콘으로 열면 최신 게시글로 잠깐 이동했다가 홈으로 되돌아오는"
+  // 증상이 생겨서(두 우회가 동시에 작동하며 충돌), 다시 아이폰 전용으로 좁힘.
   const userAgent = self.navigator.userAgent || '';
   const isIPhone = /iPhone|iPod/i.test(userAgent);
-  const isSamsungInternet = /Android/i.test(userAgent) && /SamsungBrowser/i.test(userAgent);
-  if (!isIPhone && !isSamsungInternet) return;
+  if (!isIPhone) return;
 
   await savePendingNotif({
     type: 'navigate',
