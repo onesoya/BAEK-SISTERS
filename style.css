@@ -383,6 +383,8 @@
   .date-plan-toggle.active{ background:var(--pink); color:var(--white); border-color:var(--pink); }
 
   .list{display:flex;flex-direction:column;gap:10px;}
+  /* 일정/데이트기록 탭은 마지막 카드가 하단 탭바랑 맞닿아 보여서 여백을 좀 더 줌 */
+  #scheduleList, #pastScheduleSection, #dateLogList{ margin-bottom:24px; }
   .item-card{border:2.5px solid var(--plum);
     background:var(--white);
     border-radius:9px;
