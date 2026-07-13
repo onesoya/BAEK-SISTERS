@@ -37,7 +37,7 @@ db.enablePersistence()
   const ALL_NAMES = ['소정','지수','운빈','운경'];
   // 코드 새로 줄 때마다 이 값 올림 - 홈 화면 맨 아래에 표시돼서, 최신 버전이 실제로
   // 적용됐는지 앱만 열어봐도 바로 확인할 수 있게 해둠.
-  const APP_VERSION = '2026.07.13-9';
+  const APP_VERSION = '2026.07.13-10';
   function colorKeyOf(name){ return PERSON_COLOR[name] || 'yellow'; }
   
   async function searchLocations(query){
@@ -1568,6 +1568,10 @@ function renderLetters() {
   }
   function activateTabFromHash(){
     const hash = window.location.hash.replace('#','');
+    // 해시를 읽자마자 주소창에서 지움 - 안드로이드가 백그라운드에서 깨어나며
+    // 조용히 새로고침하는 경우, 예전 해시가 그대로 남아있으면 그걸 다시 읽어서
+    // "예전에 눌렀던 알림"을 계속 반복하는 문제가 있었음. 매번 지워두면 그럴 일이 없음.
+    if(hash) history.replaceState(null, '', window.location.pathname + window.location.search);
     if(!hash) return;
     const [tab, itemId, commentTs, replyTs] = hash.split(':');
     if(!tab) return;

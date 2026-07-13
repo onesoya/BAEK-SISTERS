@@ -111,9 +111,15 @@ self.addEventListener('notificationclick', (event) => {
           client.focus();
           // 아이폰은 폰이 잠겨있다가 그대로 알림을 눌렀을 때, focus()/postMessage()만으로는
           // 완전히 반응이 없는 경우가 확인됨(안드로이드는 이걸로 잘 됨). 아이폰에서만
-          // 추가로 navigate()도 같이 시도해서 확실히 깨우도록 함.
+          // 추가로 navigate()도 같이 시도해서 확실히 깨우도록 함. 이때 해시만 다른 주소는
+          // "그냥 무시"하는 것으로 보여서, 매번 값이 달라지는 쿼리(?wake=시간값)를 붙여
+          // 아이폰이 "완전히 새로운 주소"로 인식하고 확실히 반응하게 만듦.
           if (isIOS && 'navigate' in client) {
-            try { client.navigate(link); } catch (e) { /* 무시 */ }
+            try {
+              const wakeUrl = new URL(link, self.location.origin);
+              wakeUrl.searchParams.set('wake', Date.now());
+              client.navigate(wakeUrl.href);
+            } catch (e) { /* 무시 */ }
           }
           return;
         }
