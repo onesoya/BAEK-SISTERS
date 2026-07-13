@@ -26,6 +26,14 @@
 
   *{box-sizing:border-box;}
 
+  html{
+    /* 안드로이드 크롬/삼성인터넷이 좁은 화면에서 가독성을 위해 글자를 자기 마음대로
+       키우는 기능(font boosting)이 있어서, 우리가 지정한 크기 그대로 나오게 꺼둠.
+       이게 없으면 똑같은 CSS인데 안드로이드에서만 글자가 커져서 레이아웃이 밀림. */
+    -webkit-text-size-adjust:100%;
+    text-size-adjust:100%;
+  }
+
   body{
     margin:0;
     background:var(--cream);
