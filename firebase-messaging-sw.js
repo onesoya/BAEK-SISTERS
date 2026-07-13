@@ -58,7 +58,7 @@ self.addEventListener('notificationclick', (event) => {
 // ============================================================================
 // 2. 서비스워커 갱신 및 상태 관리
 // ============================================================================
-const SW_VERSION = 'sw-2026.07.13-5';
+const SW_VERSION = 'sw-2026.07.13-7';
 
 self.addEventListener('install', () => {
   self.skipWaiting();
@@ -166,6 +166,32 @@ firebase.initializeApp({
 
 const messaging = firebase.messaging();
 
-messaging.onBackgroundMessage(() => {
-  // 의도적으로 아무것도 안 함 (SDK 자동 표시에 맡김)
+// 알림 클릭(notificationclick)이 아이폰에서 아예 발생하지 않는 경우가 있음
+// (Firebase 공식 Known Issues #7309 - WebKit 자체 버그. 홈 화면 아이콘으로 세션이
+// 시작된 경우 서비스워커의 이벤트 리스너들이 안 터질 수 있다고 명시돼있음).
+// 그래서 "클릭했을 때" 저장하는 것 외에, "알림이 도착한 순간"에도 미리 저장해둠.
+// 클릭 이벤트 자체가 씹혀도, 앱이 어떤 식으로든(수동으로 아이콘 눌러서라도) 다시
+// 열리면 handleAppResume()이 이 저장된 정보를 찾아서 이동시켜줄 수 있음.
+messaging.onBackgroundMessage(async (payload) => {
+  const data = (payload && payload.data) ? payload.data : {};
+  if (!data.tab) return;
+
+  // 이 우회는 notificationclick이 아예 안 터지는 아이폰(iPhone/iPod)에만 적용함.
+  // 아이패드는 원래도 notificationclick이 정상 작동하고, 안드로이드도 기존
+  // postMessage/focus 경로가 잘 되고 있어서 - 여기서 다 같이 저장해두면
+  // "알림을 안 눌렀는데 나중에 앱을 열었을 때 자동으로 그 게시글로 이동해버리는"
+  // 부작용이 생길 수 있음. 그 위험을 정말 필요한 기기로만 좁힘.
+  const userAgent = self.navigator.userAgent || '';
+  const isIPhone = /iPhone|iPod/i.test(userAgent);
+  if (!isIPhone) return;
+
+  await savePendingNotif({
+    type: 'navigate',
+    tab: data.tab,
+    itemId: data.itemId,
+    commentTs: data.commentTs,
+    replyTs: data.replyTs,
+    receivedAt: Date.now()
+  });
+  // showNotification()은 호출하지 않음 - notification 필드가 있어서 브라우저가 알아서 띄움
 });
