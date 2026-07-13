@@ -42,7 +42,7 @@ db.enablePersistence()
   const ALL_NAMES = ['소정','지수','운빈','운경'];
   // 코드 새로 줄 때마다 이 값 올림 - 홈 화면 맨 아래에 표시돼서, 최신 버전이 실제로
   // 적용됐는지 앱만 열어봐도 바로 확인할 수 있게 해둠.
-  const APP_VERSION = '2026.07.13-25';
+  const APP_VERSION = '2026.07.13-26';
   function colorKeyOf(name){ return PERSON_COLOR[name] || 'yellow'; }
   
   async function searchLocations(query){
@@ -336,6 +336,11 @@ async function uploadPhotos(photosArray, onProgress) {
   function isMine(item){
     if(item.author === undefined || item.author === null) return true;
     return item.author === identity;
+  }
+  // 삭제 권한: 본인 글이거나, 소정이면 누구 글이든 삭제 가능 (수정 권한은 그대로 본인만)
+  function canDelete(authorName){
+    if(authorName === undefined || authorName === null) return true;
+    return authorName === identity || identity === '소정';
   }
   function getItemPhotos(item){
     if(item.photos && item.photos.length) return item.photos;
@@ -692,7 +697,7 @@ async function uploadPhotos(photosArray, onProgress) {
         <div class="comment-item reply-item" data-comment-anchor="${r.ts}">
           <span class="c-author color-${colorKeyOf(r.author)}">${r.author}</span>
           <span class="c-text">${escapeHTML(r.text)}</span>
-          ${r.author === identity ? `<button class="r-del" data-comment-col="${colName}" data-comment-id="${item.id}" data-parent-ts="${c.ts}" data-reply-ts="${r.ts}">✕</button>` : ''}
+          ${canDelete(r.author) ? `<button class="r-del" data-comment-col="${colName}" data-comment-id="${item.id}" data-parent-ts="${c.ts}" data-reply-ts="${r.ts}">✕</button>` : ''}
           <div class="c-time">${formatDateTimeKR(r.ts)}</div>
         </div>
       `).join('');
@@ -711,7 +716,7 @@ async function uploadPhotos(photosArray, onProgress) {
       <div class="comment-item" data-comment-anchor="${c.ts}">
         <span class="c-author color-${colorKeyOf(c.author)}">${c.author}</span>
         <span class="c-text">${escapeHTML(c.text)}</span>
-        ${c.author === identity ? `<button class="c-del" data-comment-col="${colName}" data-comment-id="${item.id}" data-comment-ts="${c.ts}">✕</button>` : ''}
+        ${canDelete(c.author) ? `<button class="c-del" data-comment-col="${colName}" data-comment-id="${item.id}" data-comment-ts="${c.ts}">✕</button>` : ''}
         <div class="c-time">
           ${formatDateTimeKR(c.ts)}
           <button type="button" class="reply-toggle-btn" data-reply-toggle-col="${colName}" data-reply-toggle-id="${item.id}" data-reply-toggle-ts="${c.ts}">답글 달기</button>
@@ -1006,8 +1011,8 @@ async function uploadPhotos(photosArray, onProgress) {
           ${!isPast(item) && !isMine(item) ? `<button type="button" class="date-plan-toggle ${joined?'active':''}" data-join-schedule="${item.id}" data-joined="${joined}" style="margin-top:8px;">${joined ? '참여 취소' : '참여할래'}</button>` : ''}
         ` : ''}
       </div>
-      ${isMine(item) ? `<button class="edit-btn" data-edit-schedule="${item.id}">${pixelEditSVG()}</button>
-      <button class="del-btn" data-del-schedule="${item.id}">✕</button>` : ''}
+      ${isMine(item) ? `<button class="edit-btn" data-edit-schedule="${item.id}">${pixelEditSVG()}</button>` : ''}
+      ${canDelete(item.author) ? `<button class="del-btn" data-del-schedule="${item.id}">✕</button>` : ''}
     </div>`;
   }
   let showPastSchedule = false;
@@ -1252,8 +1257,8 @@ function renderCalendar(){
           <div class="wish-footer">
             <div style="display:flex;align-items:center;gap:6px;justify-content:flex-end;width:100%;">
               <button class="wish-check ${item.done?'checked':''}" data-check-wish="${item.id}">${item.done ? '✓ 완료함' : '완료로 표시'}</button>
-              ${isMine(item) ? `<button class="edit-btn" data-edit-wish="${item.id}">${pixelEditSVG()}</button>
-              <button class="del-btn" data-del-wish="${item.id}">✕</button>` : ''}
+              ${isMine(item) ? `<button class="edit-btn" data-edit-wish="${item.id}">${pixelEditSVG()}</button>` : ''}
+              ${canDelete(item.author) ? `<button class="del-btn" data-del-wish="${item.id}">✕</button>` : ''}
             </div>
           </div>
           <div class="reaction-row">
@@ -1342,8 +1347,8 @@ function renderCalendar(){
               </button>
             </div>
             <div class="reaction-row-right">
-              ${isMine(item) ? `<button class="edit-btn" data-edit-datelog="${item.id}">${pixelEditSVG()}</button>
-              <button class="del-btn" data-del-datelog="${item.id}">✕</button>` : ''}
+              ${isMine(item) ? `<button class="edit-btn" data-edit-datelog="${item.id}">${pixelEditSVG()}</button>` : ''}
+              ${canDelete(item.author) ? `<button class="del-btn" data-del-datelog="${item.id}">✕</button>` : ''}
             </div>
           </div>
           ${renderCommentsHTML(item, 'datelog')}
@@ -1386,8 +1391,8 @@ function renderDateLog() {
           ${cardPhotosHTML(item)}
           <div class="wish-footer">
             <div style="display:flex;align-items:center;gap:6px;justify-content:flex-end;width:100%;">
-              ${isMine(item) ? `<button class="edit-btn" data-edit-board="${item.id}">${pixelEditSVG()}</button>
-              <button class="del-btn" data-del-board="${item.id}">✕</button>` : ''}
+              ${isMine(item) ? `<button class="edit-btn" data-edit-board="${item.id}">${pixelEditSVG()}</button>` : ''}
+              ${canDelete(item.author) ? `<button class="del-btn" data-del-board="${item.id}">✕</button>` : ''}
             </div>
           </div>
           <div class="reaction-row">
@@ -1457,7 +1462,7 @@ function renderBoard() {
           }
           <div class="wish-footer">
             <div style="display:flex; align-items:center; gap:8px; justify-content:flex-end; width:100%;">
-              ${isMine(item) ? `<button class="edit-btn" data-edit-letter="${item.id}">${pixelEditSVG()}</button><button class="del-btn" data-del-letter="${item.id}">✕</button>` : ''}
+              ${isMine(item) ? `<button class="edit-btn" data-edit-letter="${item.id}">${pixelEditSVG()}</button>` : ''}${canDelete(item.author) ? `<button class="del-btn" data-del-letter="${item.id}">✕</button>` : ''}
             </div>
           </div>
           ${!isLocked ? `
@@ -3070,8 +3075,8 @@ function startWatchers(){
       const item = list.find(x => x.id === id);
       if (!item) return;
       
-      // 삭제할 정확한 댓글 객체 찾기 (시간과 작성자가 동일한 것)
-      const targetComment = (item.comments || []).find(c => c.ts === ts && c.author === identity);
+      // 삭제할 정확한 댓글 객체 찾기 (시간으로 특정 - 삭제 버튼은 본인 것이거나 소정일 때만 보이니, 여기선 author로 다시 안 걸러도 됨)
+      const targetComment = (item.comments || []).find(c => c.ts === ts);
       if (!targetComment) return;
 
       const hasReplies = (targetComment.replies || []).length > 0;
@@ -3087,7 +3092,7 @@ function startWatchers(){
             const ref = db.collection(col).doc(id);
             const snap = await ref.get();
             const comments = (snap.data().comments || []).map(c => {
-              if (c.ts === ts && c.author === identity) {
+              if (c.ts === ts) {
                 return { ts: c.ts, author: c.author, deleted: true, replies: c.replies || [] };
               }
               return c;
@@ -3165,7 +3170,7 @@ function startWatchers(){
           const comments = (snap.data().comments || [])
             .map(c => {
               if (c.ts === parentTs) {
-                const newReplies = (c.replies || []).filter(r => !(r.ts === replyTs && r.author === identity));
+                const newReplies = (c.replies || []).filter(r => r.ts !== replyTs);
                 return { ...c, replies: newReplies };
               }
               return c;
