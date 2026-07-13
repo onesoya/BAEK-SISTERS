@@ -37,7 +37,7 @@ db.enablePersistence()
   const ALL_NAMES = ['소정','지수','운빈','운경'];
   // 코드 새로 줄 때마다 이 값 올림 - 홈 화면 맨 아래에 표시돼서, 최신 버전이 실제로
   // 적용됐는지 앱만 열어봐도 바로 확인할 수 있게 해둠.
-  const APP_VERSION = '2026.07.13-22';
+  const APP_VERSION = '2026.07.13-23';
   function colorKeyOf(name){ return PERSON_COLOR[name] || 'yellow'; }
   
   async function searchLocations(query){
@@ -2716,6 +2716,8 @@ function startWatchers(){
       markNotifRead(notifId);
       // 주소에서 지워서, 나중에 새로고침해도 같은 처리가 반복되지 않게 함
       params.delete('notif');
+      // 삼성인터넷 강제 이동용으로 붙였던 캐시버스팅 값도 같이 정리 (기능상 필수는 아니고, 주소가 지저분해지지 않게 하는 용도)
+      params.delete('_push');
       const newSearch = params.toString();
       const newUrl = window.location.pathname + (newSearch ? `?${newSearch}` : '') + window.location.hash;
       history.replaceState(null, '', newUrl);

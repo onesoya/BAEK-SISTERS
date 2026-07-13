@@ -41,6 +41,27 @@ self.addEventListener('notificationclick', (event) => {
       const appClient = windowClients.find((client) => client.url.startsWith(self.registration.scope));
 
       if (appClient) {
+        const userAgent = self.navigator.userAgent || '';
+        const isSamsungInternet = /Android/i.test(userAgent) && /SamsungBrowser/i.test(userAgent);
+
+        // 삼성인터넷의 설치형 PWA가 화면 꺼진 채로 잠들어 있으면, postMessage가 전달 안
+        // 되고 그냥 "원래 있던 작업 화면"만 다시 앞으로 나오는 것으로 보여서(새 알림이
+        // 아니라 이 세션의 첫 알림/홈 상태가 반복 재현됨), 삼성인터넷에서는 새 알림
+        // 주소로 기존 창 자체를 강제 이동시킴. 다른 브라우저/기기는 기존 방식 유지.
+        if (isSamsungInternet && 'navigate' in appClient) {
+          try {
+            const forcedUrl = new URL(fallbackUrl, self.registration.scope);
+            // 같은 경로라도 매번 새로운 탐색으로 인식하도록 고유값을 추가
+            forcedUrl.searchParams.set('_push', Date.now().toString());
+            const navigatedClient = await appClient.navigate(forcedUrl.href);
+            if (navigatedClient) await navigatedClient.focus();
+            else await appClient.focus();
+            return;
+          } catch (e) {
+            // navigate가 실패하면 아래의 기존 방식으로 다시 시도
+          }
+        }
+
         // focus()가 실패하거나 늦어져도 메시지는 이미 전달되도록, postMessage를 먼저 보냄
         appClient.postMessage(navPayload);
         try {
@@ -61,7 +82,7 @@ self.addEventListener('notificationclick', (event) => {
 // ============================================================================
 // 2. 서비스워커 갱신 및 상태 관리
 // ============================================================================
-const SW_VERSION = 'sw-2026.07.13-10';
+const SW_VERSION = 'sw-2026.07.13-11';
 
 self.addEventListener('install', () => {
   self.skipWaiting();
