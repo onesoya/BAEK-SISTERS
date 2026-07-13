@@ -37,7 +37,7 @@ db.enablePersistence()
   const ALL_NAMES = ['소정','지수','운빈','운경'];
   // 코드 새로 줄 때마다 이 값 올림 - 홈 화면 맨 아래에 표시돼서, 최신 버전이 실제로
   // 적용됐는지 앱만 열어봐도 바로 확인할 수 있게 해둠.
-  const APP_VERSION = '2026.07.13-21';
+  const APP_VERSION = '2026.07.13-22';
   function colorKeyOf(name){ return PERSON_COLOR[name] || 'yellow'; }
   
   async function searchLocations(query){
@@ -409,26 +409,34 @@ async function uploadPhotos(photosArray, onProgress) {
 
   function tryConsumePendingScroll(){
     if(!pendingScrollTarget) return;
+
     const { tab, itemId, commentTs, replyTs } = pendingScrollTarget;
     const card = document.querySelector(`[data-item-id="${itemId}"]`);
-    if(!card) return; // 아직 카드가 화면에 없음 - 다음 기회에 다시 확인됨
 
+    // 아직 게시물 카드가 화면에 없으면 계속 기다림.
+    // 게시물 삭제 여부는 아래 navigateToItem()의 4초 확인에서 따로 판단함.
+    if(!card) return;
+
+    // 게시물은 찾았으므로 상세 내용을 바로 펼침
     const detail = card.querySelector('.post-detail');
     if(detail) detail.classList.remove('hidden');
 
+    // 게시물 자체를 가리키는 알림이면 성공
     if(!commentTs){
       clearScrollState();
       scrollToEl(card);
       return;
     }
 
+    // 댓글 알림이면 댓글창까지 바로 열기
     const section = card.querySelector('.comment-section');
     if(section) section.classList.add('active');
 
-    // 답글 알림으로 들어온 거면, 답장하기 편하게 그 댓글의 답글 입력창도 같이 열어줌
+    // 답글 알림이면 해당 댓글의 답글 입력창도 열어둠
     if(replyTs && tab && TAB_TO_COL[tab]){
       const replyKey = `${TAB_TO_COL[tab]}-${itemId}-${commentTs}`;
       const replyRow = document.getElementById(`reply-row-${replyKey}`);
+
       if(replyRow){
         replyRow.classList.add('active');
         openReplyInputs.add(replyKey);
@@ -436,12 +444,164 @@ async function uploadPhotos(photosArray, onProgress) {
     }
 
     const anchorTs = replyTs || commentTs;
-    const anchorEl = card.querySelector(`[data-comment-anchor="${anchorTs}"]`);
+    const anchorEl = card.querySelector(
+      `[data-comment-anchor="${anchorTs}"]`
+    );
+
+    // 댓글 또는 답글을 찾았으면 정상 스크롤
     if(anchorEl){
       clearScrollState();
       scrollToEl(anchorEl);
+      return;
     }
-    // 특정 댓글/답글을 아직 못 찾았으면 pendingScrollTarget을 그대로 둬서 다음 기회에 재시도
+
+    // 게시물은 있는데 댓글/답글 요소만 없음.
+    // 렌더링이 아주 잠깐 늦은 것일 수 있으므로 400ms 뒤 Firestore 원본을 확인함.
+    if(!pendingScrollTarget.commentCheckScheduled){
+      pendingScrollTarget.commentCheckScheduled = true;
+      const targetSnapshot = { ...pendingScrollTarget };
+
+      setTimeout(() => {
+        verifyMissingCommentTarget(targetSnapshot);
+      }, 400);
+    }
+  }
+
+  // 화면 탭 이름을 실제 Firestore 컬렉션 이름으로 변환 (TAB_TO_COL과는 별개 -
+  // TAB_TO_COL은 댓글창 DOM ID를 만들 때 쓰고, 이건 Firestore 문서를 직접 조회할 때 씀.
+  // schedule도 포함해야 해서 - 일정은 댓글이 없어도 게시물 삭제 확인은 필요함)
+  const TAB_TO_COLLECTION = {
+    schedule: 'schedule',
+    wish: 'wishlist',
+    datelog: 'datelog',
+    board: 'board',
+    letter: 'letters'
+  };
+
+  // 비동기 확인을 하는 동안 사용자가 다른 알림을 눌렀는지 확인.
+  // 다른 대상으로 이동한 상태라면 이전 확인 결과를 화면에 띄우지 않음.
+  function isSamePendingTarget(target){
+    const current = pendingScrollTarget;
+    if(!current) return false;
+
+    return (
+      current.tab === target.tab &&
+      current.itemId === target.itemId &&
+      String(current.commentTs || '') === String(target.commentTs || '') &&
+      String(current.replyTs || '') === String(target.replyTs || '')
+    );
+  }
+
+  // 게시물은 화면에 나타났는데 특정 댓글/답글을 찾지 못했을 때,
+  // Firestore의 최신 원본 문서를 직접 확인함.
+  async function verifyMissingCommentTarget(target){
+    const col = TAB_TO_COLLECTION[target.tab];
+    if(!col || !isSamePendingTarget(target)) return;
+
+    try{
+      // 캐시가 아니라 서버의 최신 문서로 확인
+      const snap = await db
+        .collection(col)
+        .doc(target.itemId)
+        .get({ source: 'server' });
+
+      // 확인하는 사이 다른 알림으로 이동했다면 무시
+      if(!isSamePendingTarget(target)) return;
+
+      // 게시물 자체가 없어졌다면 게시물 삭제 안내
+      if(!snap.exists){
+        clearScrollState();
+        showPushToast('삭제된 게시물이야', null, null);
+        return;
+      }
+
+      const itemData = snap.data() || {};
+      const comments = itemData.comments || [];
+
+      const parentComment = comments.find((comment) =>
+        String(comment.ts) === String(target.commentTs)
+      );
+
+      // 부모 댓글이 완전히 삭제된 경우
+      if(!parentComment){
+        const card = document.querySelector(
+          `[data-item-id="${target.itemId}"]`
+        );
+
+        clearScrollState();
+
+        // 게시물은 있으므로 게시물 카드로 이동
+        if(card) scrollToEl(card);
+
+        showPushToast('해당 댓글은 삭제됐어', null, null);
+        return;
+      }
+
+      // 부모 댓글은 있지만 특정 답글이 삭제된 경우
+      if(target.replyTs){
+        const replies = parentComment.replies || [];
+
+        const replyExists = replies.some((reply) =>
+          String(reply.ts) === String(target.replyTs)
+        );
+
+        if(!replyExists){
+          const card = document.querySelector(
+            `[data-item-id="${target.itemId}"]`
+          );
+
+          // 답글이 달렸던 부모 댓글 위치가 남아 있으면 그쪽으로 이동
+          const parentEl = card && card.querySelector(
+            `[data-comment-anchor="${target.commentTs}"]`
+          );
+
+          clearScrollState();
+
+          if(parentEl) scrollToEl(parentEl);
+          else if(card) scrollToEl(card);
+
+          showPushToast('해당 답글은 삭제됐어', null, null);
+          return;
+        }
+      }
+
+      // Firestore에는 댓글/답글이 존재함.
+      // DOM 렌더링만 늦은 상황이므로 pending 상태를 유지하고 계속 재시도함.
+    }catch(err){
+      console.warn('댓글 삭제 여부 확인 실패:', err);
+
+      // 일시적인 네트워크 오류일 수 있으므로 삭제됐다고 단정하지 않음.
+      // 다음 렌더 또는 폴링에서 다시 찾도록 상태를 유지함.
+      if(isSamePendingTarget(target)){
+        pendingScrollTarget.commentCheckScheduled = false;
+      }
+    }
+  }
+
+  // 게시물 카드가 일정 시간 동안 나타나지 않을 때,
+  // 실제로 문서가 삭제됐는지 Firestore 서버에서 확인함.
+  async function verifyDeletedPostTarget(target){
+    const col = TAB_TO_COLLECTION[target.tab];
+    if(!col || !isSamePendingTarget(target)) return;
+
+    try{
+      const snap = await db
+        .collection(col)
+        .doc(target.itemId)
+        .get({ source: 'server' });
+
+      if(!isSamePendingTarget(target)) return;
+
+      if(!snap.exists){
+        clearScrollState();
+        showPushToast('삭제된 게시물이야', null, null);
+      }
+
+      // 문서가 존재한다면 단순 데이터 로딩 지연일 수 있으므로 계속 기다림
+    }catch(err){
+      console.warn('게시물 삭제 여부 확인 실패:', err);
+      // 네트워크 오류일 수 있으므로 삭제됐다고 표시하지 않음
+    }
   }
 
   // 화면이 다시 보이게 되는 걸 알려주는 이벤트들 - 여러 번 호출부에서 등록하지 않고
@@ -3125,21 +3285,53 @@ function startWatchers(){
     pendingScrollTarget = { tab, itemId, commentTs, replyTs };
     tryConsumePendingScroll(); // 지금 당장 한 번 시도
 
-    // 위 즉시 시도 + 전역 등록된 visibilitychange/focus/pageshow로도 다 못 걸리는
-    // 상황을 대비해서, 최대 10초 동안 0.5초마다 확인하는 최후의 안전장치도 같이 둠
+    // 즉시 시도와 렌더 훅으로도 목표를 찾지 못하는 경우를 위한 최후의 안전장치.
+    //
+    // 4초가 됐는데 게시물 카드조차 없으면 Firestore 서버에서 문서 존재 여부를 확인:
+    //   - 문서가 없으면 "삭제된 게시물이야"
+    //   - 문서가 있으면 로딩이 늦은 것이므로 조금 더 기다림
+    //
+    // 게시물은 나타났지만 댓글/답글만 없으면 tryConsumePendingScroll()에서
+    // 별도로 빠르게 확인해 안내함.
     let pollCount = 0;
+    let postDeletionCheckStarted = false;
+
     scrollPollInterval = setInterval(() => {
       pollCount++;
+
       if(!pendingScrollTarget){
-        clearScrollState(); // 다른 경로(렌더 훅 등)에서 이미 성공했으면 조용히 정리만 함
+        clearScrollState();
         return;
       }
+
+      const targetSnapshot = { ...pendingScrollTarget };
+      const card = document.querySelector(
+        `[data-item-id="${targetSnapshot.itemId}"]`
+      );
+
+      // 0.5초 × 8회 = 약 4초.
+      // 게시물 카드가 여전히 없을 때만 삭제 여부를 확인함.
+      if(
+        pollCount === 8 &&
+        !card &&
+        !postDeletionCheckStarted
+      ){
+        postDeletionCheckStarted = true;
+        verifyDeletedPostTarget(targetSnapshot);
+      }
+
+      // 최대 10초까지 기다렸는데도 못 찾았고,
+      // 서버에서 삭제됐다는 확인도 되지 않았다면 네트워크/로딩 문제로 안내.
       if(pollCount > 20){
         clearScrollState();
-        // 10초 넘게 찾아도 없으면, 그 사이에 게시글/댓글이 삭제됐을 가능성이 높음 -> 안내
-        showPushToast('앗, 게시글이나 댓글을 찾을 수 없어. 삭제됐을 수도 있어', null, null);
+        showPushToast(
+          '게시글을 불러오지 못했어. 잠시 후 다시 시도해줘',
+          null,
+          null
+        );
         return;
       }
+
       tryConsumePendingScroll();
     }, 500);
   }
