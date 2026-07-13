@@ -37,7 +37,7 @@ db.enablePersistence()
   const ALL_NAMES = ['소정','지수','운빈','운경'];
   // 코드 새로 줄 때마다 이 값 올림 - 홈 화면 맨 아래에 표시돼서, 최신 버전이 실제로
   // 적용됐는지 앱만 열어봐도 바로 확인할 수 있게 해둠.
-  const APP_VERSION = '2026.07.13-11';
+  const APP_VERSION = '2026.07.13-12';
   function colorKeyOf(name){ return PERSON_COLOR[name] || 'yellow'; }
   
   async function searchLocations(query){
@@ -434,15 +434,21 @@ async function uploadPhotos(photosArray, onProgress) {
 
   // 화면이 다시 보이게 되는 걸 알려주는 이벤트들 - 여러 번 호출부에서 등록하지 않고
   // 여기서 한 번만 전역으로 등록해둠 (기명 함수라 중복 등록은 원래도 안 됐지만, 구조상 더 깔끔하게)
-  document.addEventListener('visibilitychange', () => {
-    if(document.visibilityState === 'visible' && navigator.serviceWorker && navigator.serviceWorker.controller){
-      // 자는 동안(폰 잠금 등) 놓친 알림이 있는지 서비스워커에게 물어봄.
-      // 있으면 서비스워커가 postMessage로 돌려주고, 그건 이미 등록된 message
-      // 리스너(navigate 타입 처리)가 알아서 받아서 처리함.
-      navigator.serviceWorker.controller.postMessage({ type: 'CHECK_PENDING_NOTIF' });
+  function checkPendingPush(){
+    if('serviceWorker' in navigator){
+      navigator.serviceWorker.ready.then(reg=>{
+        if(reg.active) reg.active.postMessage({ type: 'CHECK_PENDING_NOTIF' });
+      });
     }
+  }
+  // 1) 화면이 꺼졌다가 다시 보이게 될 때 (주로 아이폰: 잠금 해제 등)
+  document.addEventListener('visibilitychange', () => {
+    if(document.visibilityState === 'visible') checkPendingPush();
     tryConsumePendingScroll();
   });
+  // 2) 페이지가 아예 처음부터 다시 로딩될 때 (주로 안드로이드: 화면 꺼진 채 오래 있다가
+  //    탭이 통째로 정리(discard)됐다가 알림 클릭으로 다시 켜지는 경우)
+  window.addEventListener('load', checkPendingPush);
   window.addEventListener('focus', tryConsumePendingScroll);
   window.addEventListener('pageshow', tryConsumePendingScroll);
 
@@ -1595,6 +1601,11 @@ function renderLetters() {
       if(event.data && event.data.type === 'navigate' && event.data.tab){
         if(event.data.itemId) navigateToItem(event.data.tab, event.data.itemId, event.data.commentTs, event.data.replyTs);
         else activateTab(event.data.tab);
+        // 처리 완료했다고 서비스워커에 알려줘서, IndexedDB에 남아있던 기록을 지우게 함
+        // (안 지우면 나중에 전혀 상관없는 시점에 이 알림이 다시 튀어나올 수 있음)
+        if(navigator.serviceWorker.controller){
+          navigator.serviceWorker.controller.postMessage({ type: 'CLEAR_PENDING_NOTIF' });
+        }
       }
       if(event.data && event.data.type === 'SW_VERSION'){
         const tag = document.getElementById('appVersionTag');

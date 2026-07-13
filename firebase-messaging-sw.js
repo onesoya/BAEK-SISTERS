@@ -12,7 +12,7 @@ firebase.initializeApp({
 
 // 이 서비스워커 파일 자체의 버전. 코드 고칠 때마다 이 값을 올림.
 // (app.js 화면에 보이는 버전과는 완전히 별개로 갱신되니, 이것도 따로 확인할 수 있게 해둠)
-const SW_VERSION = 'sw-2026.07.13-1';
+const SW_VERSION = 'sw-2026.07.13-2';
 
 // 서비스워커 새 버전이 배포되면, 다른 탭을 안 닫아도 바로 이 버전으로 교체되게 함.
 self.addEventListener('install', () => {
@@ -61,7 +61,7 @@ async function savePendingNotif(payload) {
       tx.oncomplete = resolve;
       tx.onerror = () => reject(tx.error);
     });
-  } catch (e) { /* 무시 - 저장 실패해도 기존 postMessage/navigate 경로는 그대로 시도됨 */ }
+  } catch (e) { /* 무시 - 저장 실패해도 기존 postMessage 경로는 그대로 시도됨 */ }
 }
 
 async function readAndClearPendingNotif() {
@@ -83,6 +83,18 @@ async function readAndClearPendingNotif() {
   }
 }
 
+async function clearPendingNotif() {
+  try {
+    const db = await openNotifDB();
+    await new Promise((resolve, reject) => {
+      const tx = db.transaction(NOTIF_STORE, 'readwrite');
+      tx.objectStore(NOTIF_STORE).delete('latest');
+      tx.oncomplete = resolve;
+      tx.onerror = () => reject(tx.error);
+    });
+  } catch (e) { /* 무시 */ }
+}
+
 // 알림 클릭하면 해당 탭:게시글(:댓글:답글)로 이동.
 // 앱이 이미 열려있으면 postMessage로 직접 "이 탭/게시글로 이동해" 라고 알려주고,
 // 앱이 안 열려있으면 그냥 해시가 붙은 주소로 새로 열어.
@@ -93,7 +105,6 @@ self.addEventListener('notificationclick', (event) => {
   const raw = event.notification.data || {};
   const data = raw.FCM_MSG && raw.FCM_MSG.data ? raw.FCM_MSG.data : raw;
   const link = data.link || '/';
-  const isIOS = /iPad|iPhone|iPod/.test(self.navigator.userAgent);
 
   const navPayload = {
     type: 'navigate',
@@ -105,26 +116,20 @@ self.addEventListener('notificationclick', (event) => {
 
   event.waitUntil(
     (async () => {
-      // 아이폰은 IndexedDB에도 남겨둠 (잠금 상태에서 postMessage가 씹혀도 나중에 복구 가능하도록)
-      if (isIOS) await savePendingNotif(navPayload);
+      // 플랫폼 상관없이 무조건 IndexedDB에도 남겨둠 - 안드로이드도 화면이 꺼진 채로
+      // 오래 있으면 탭 자체가 통째로 정리(discard)됐다가 다시 켜지면서 메시지를
+      // 놓치는 경우가 있는 것으로 보여서, 이제 아이폰만이 아니라 항상 저장해둠.
+      await savePendingNotif(navPayload);
 
       const windowClients = await clients.matchAll({ type: 'window', includeUncontrolled: true });
       for (const client of windowClients) {
         if ('focus' in client) {
+          // navigate()로 동시에 "새로고침"까지 강제로 시도했던 이전 버전은, 포커스 맞추는
+          // 것과 새로고침 시도가 서로 부딪혀서 오히려 아무 반응도 없는 상태를 만드는 것으로
+          // 의심돼서 제거함. 이제 postMessage + focus만 시도하고, 이게 실패해도 (엄격하게
+          // 확인은 못 하지만) 아래 CHECK_PENDING_NOTIF 경로가 뒤늦게라도 확실히 채워줌.
           client.postMessage(navPayload);
           client.focus();
-          // 아이폰은 폰이 잠겨있다가 그대로 알림을 눌렀을 때, focus()/postMessage()만으로는
-          // 완전히 반응이 없는 경우가 확인됨(안드로이드는 이걸로 잘 됨). 아이폰에서만
-          // 추가로 navigate()도 같이 시도해서 확실히 깨우도록 함. 이때 해시만 다른 주소는
-          // "그냥 무시"하는 것으로 보여서, 매번 값이 달라지는 쿼리(?wake=시간값)를 붙여
-          // 아이폰이 "완전히 새로운 주소"로 인식하고 확실히 반응하게 만듦.
-          if (isIOS && 'navigate' in client) {
-            try {
-              const wakeUrl = new URL(link, self.location.origin);
-              wakeUrl.searchParams.set('wake', Date.now());
-              client.navigate(wakeUrl.href);
-            } catch (e) { /* 무시 */ }
-          }
           return;
         }
       }
@@ -134,7 +139,11 @@ self.addEventListener('notificationclick', (event) => {
 });
 
 // 앱이 "혹시 자는 동안 놓친 알림 있어?"라고 물어보면(CHECK_PENDING_NOTIF),
-// IndexedDB에 저장해둔 게 있으면 꺼내서 돌려줌
+// IndexedDB에 저장해둔 게 있으면 꺼내서 돌려줌.
+// CLEAR_PENDING_NOTIF는, 위 postMessage가 이미 잘 처리된 경우에도 DB에는 그 기록이
+// 남아있을 수 있어서(성공 여부를 서비스워커가 확인할 방법이 없음), 페이지 쪽에서
+// "나 이미 처리했어"라고 알려주면 지워서 나중에 엉뚱한 시점에 같은 알림이 다시
+// 튀어나오는 걸 막기 위한 것.
 self.addEventListener('message', (event) => {
   if (event.data && event.data.type === 'CHECK_PENDING_NOTIF') {
     event.waitUntil(
@@ -144,6 +153,9 @@ self.addEventListener('message', (event) => {
         }
       })
     );
+  }
+  if (event.data && event.data.type === 'CLEAR_PENDING_NOTIF') {
+    event.waitUntil(clearPendingNotif());
   }
   // 지금 실행 중인 서비스워커가 몇 버전인지 물어보면 바로 답해줌
   if (event.data && event.data.type === 'GET_SW_VERSION') {
