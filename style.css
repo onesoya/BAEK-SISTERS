@@ -81,6 +81,17 @@
   }
   .icon-btn img{ width:100%; height:100%; display:block; image-rendering:pixelated; }
   .icon-btn:active{ transform:translate(3px,3px); filter:none; }
+  .notif-badge-dot{
+    position:absolute; top:-4px; right:-6px; min-width:16px; height:16px; padding:0 3px;
+    background:#E85D5D; color:#fff; border-radius:9px; font-size:10px; font-weight:700;
+    display:flex; align-items:center; justify-content:center; line-height:1;
+    font-family:'DungGeunMo',sans-serif; border:1.5px solid var(--cream);
+  }
+  .notif-item{ cursor:pointer; align-items:center; }
+  .notif-dismiss-btn{
+    flex-shrink:0; background:none; border:none; font-size:15px; color:#C7BED6;
+    cursor:pointer; padding:4px 6px;
+  }
   .app-title{
     font-family:'DungGeunMo',sans-serif;
     font-size:22px;

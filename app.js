@@ -37,7 +37,7 @@ db.enablePersistence()
   const ALL_NAMES = ['소정','지수','운빈','운경'];
   // 코드 새로 줄 때마다 이 값 올림 - 홈 화면 맨 아래에 표시돼서, 최신 버전이 실제로
   // 적용됐는지 앱만 열어봐도 바로 확인할 수 있게 해둠.
-  const APP_VERSION = '2026.07.13-13';
+  const APP_VERSION = '2026.07.13-15';
   function colorKeyOf(name){ return PERSON_COLOR[name] || 'yellow'; }
   
   async function searchLocations(query){
@@ -291,6 +291,18 @@ async function uploadPhotos(photosArray, onProgress) {
       return [item.author, ...explicit];
     }
     return explicit;
+  }
+
+  // 기기별로 안정적인 ID를 하나 만들어서 localStorage에 저장해둠 (브라우저 데이터를
+  // 지우지 않는 한 계속 같은 값 - 같은 사람이 여러 기기에 로그인해도 기기마다 각자의
+  // 알림 토큰을 따로 저장/관리할 수 있게 해줌)
+  function getOrCreateDeviceId(){
+    let id = localStorage.getItem('deviceId');
+    if(!id){
+      id = 'dev_' + Date.now() + '_' + Math.random().toString(36).slice(2, 10);
+      localStorage.setItem('deviceId', id);
+    }
+    return id;
   }
 
   function escapeHTML(s){
@@ -2414,7 +2426,9 @@ function watch(query, collectionName, onData){
       const messaging = firebase.messaging();
       const token = await messaging.getToken({ vapidKey: VAPID_KEY, serviceWorkerRegistration: registration });
       if(token){
-        await db.collection('fcmTokens').doc(identity).set({ token, updatedAt: Date.now() });
+        const deviceId = getOrCreateDeviceId();
+        await db.collection('fcmTokens').doc(identity).collection('devices').doc(deviceId)
+          .set({ token, updatedAt: Date.now(), userAgent: navigator.userAgent || '' });
       }
       messaging.onMessage((payload)=>{
         showPushToast(
@@ -2455,6 +2469,7 @@ function startWatchers(){
     startCollectionWatcher('schedule');
     watchAnniversaries();
     watchProfiles();
+    watchNotifications();
 
     // [나머지 3개] 앱을 처음 켤 때 다 같이 무겁게 불러오지 않고,
     // 그 탭을 처음 열 때 그때 불러오도록 지연시킴 (아래 startCollectionWatcher 참고).
@@ -2477,6 +2492,101 @@ function startWatchers(){
       renderAnnivExistingList();
     }, err=>console.error('기념일 구독 실패', err));
   }
+
+  // ---- 알림함 (안 읽은 알림 배지 + 목록) ----
+  let unreadNotifications = [];
+
+  function watchNotifications(){
+    if(!identity) return;
+    db.collection('notifications').doc(identity).collection('items')
+      .where('read', '==', false)
+      .onSnapshot(snap => {
+        unreadNotifications = [];
+        snap.forEach(doc => unreadNotifications.push({ id: doc.id, ...doc.data() }));
+        unreadNotifications.sort((a,b) => (b.createdAt||0) - (a.createdAt||0));
+        updateNotifBadge();
+        renderNotifResults();
+      }, err => console.error('알림함 구독 실패', err));
+  }
+
+  function updateNotifBadge(){
+    const count = unreadNotifications.length;
+    const dot = document.getElementById('notifBadgeCount');
+    if(dot){
+      if(count > 0){
+        dot.textContent = count > 99 ? '99+' : String(count);
+        dot.classList.remove('hidden');
+      } else {
+        dot.classList.add('hidden');
+      }
+    }
+    // 앱 아이콘 배지 (지원하는 브라우저/기기에서만 - 미지원이어도 에러 없이 그냥 무시됨)
+    if('setAppBadge' in navigator){
+      if(count > 0) navigator.setAppBadge(count).catch(()=>{});
+      else if('clearAppBadge' in navigator) navigator.clearAppBadge().catch(()=>{});
+    }
+  }
+
+  function markNotifRead(notifId){
+    if(!identity || !notifId) return;
+    db.collection('notifications').doc(identity).collection('items').doc(notifId)
+      .update({ read: true }).catch(err => console.error('알림 읽음 처리 실패', err));
+  }
+
+  function renderNotifResults(){
+    const container = document.getElementById('notifResults');
+    if(!container) return;
+    if(unreadNotifications.length === 0){
+      container.innerHTML = '<div class="empty-state" style="padding:30px 10px;">안 읽은 알림이 없어.</div>';
+      return;
+    }
+    container.innerHTML = unreadNotifications.map((n,i) => `
+      <div class="search-result-item notif-item" data-notif-idx="${i}">
+        <div style="flex:1; min-width:0;">
+          <div class="search-result-title">${escapeHTML(n.title || '')}</div>
+          ${n.body ? `<div class="search-result-sub">${escapeHTML((n.body||'').slice(0,44))}</div>` : ''}
+        </div>
+        <button type="button" class="notif-dismiss-btn" data-notif-dismiss="${i}">✕</button>
+      </div>
+    `).join('');
+    container.querySelectorAll('[data-notif-idx]').forEach(el=>{
+      el.addEventListener('click', ()=>{
+        const idx = Number(el.dataset.notifIdx);
+        const n = unreadNotifications[idx];
+        if(!n) return;
+        markNotifRead(n.id);
+        closeNotifOverlay();
+        navigateToItem(n.tab, n.itemId, n.commentTs, n.replyTs);
+      });
+    });
+    container.querySelectorAll('[data-notif-dismiss]').forEach(btn=>{
+      btn.addEventListener('click', (e)=>{
+        e.stopPropagation();
+        const idx = Number(btn.dataset.notifDismiss);
+        const n = unreadNotifications[idx];
+        if(n) markNotifRead(n.id);
+      });
+    });
+  }
+
+  function openNotifOverlay(){
+    document.getElementById('notifOverlay').classList.remove('hidden');
+    renderNotifResults();
+  }
+  function closeNotifOverlay(){
+    document.getElementById('notifOverlay').classList.add('hidden');
+  }
+  document.getElementById('notifBellBtn').addEventListener('click', openNotifOverlay);
+  document.getElementById('notifCloseBtn').addEventListener('click', closeNotifOverlay);
+  document.getElementById('notifClearAllBtn').addEventListener('click', ()=>{
+    if(unreadNotifications.length === 0) return;
+    if(!confirm(`안 읽은 알림 ${unreadNotifications.length}개를 전부 지울까?`)) return;
+    const batch = db.batch();
+    unreadNotifications.forEach(n => {
+      batch.delete(db.collection('notifications').doc(identity).collection('items').doc(n.id));
+    });
+    batch.commit().catch(err => console.error('알림 전체 삭제 실패', err));
+  });
 
   // ---- 기념일 관리 모달 ----
   function renderAnnivExistingList(){
