@@ -10,6 +10,10 @@ firebase.initializeApp({
   appId: "1:446206353039:web:d4e780fa2f8873dd2f5afa"
 });
 
+// 이 서비스워커 파일 자체의 버전. 코드 고칠 때마다 이 값을 올림.
+// (app.js 화면에 보이는 버전과는 완전히 별개로 갱신되니, 이것도 따로 확인할 수 있게 해둠)
+const SW_VERSION = 'sw-2026.07.13-1';
+
 // 서비스워커 새 버전이 배포되면, 다른 탭을 안 닫아도 바로 이 버전으로 교체되게 함.
 self.addEventListener('install', () => {
   self.skipWaiting();
@@ -140,5 +144,9 @@ self.addEventListener('message', (event) => {
         }
       })
     );
+  }
+  // 지금 실행 중인 서비스워커가 몇 버전인지 물어보면 바로 답해줌
+  if (event.data && event.data.type === 'GET_SW_VERSION') {
+    if (event.source) event.source.postMessage({ type: 'SW_VERSION', version: SW_VERSION });
   }
 });

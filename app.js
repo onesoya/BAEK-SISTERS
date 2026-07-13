@@ -37,7 +37,7 @@ db.enablePersistence()
   const ALL_NAMES = ['소정','지수','운빈','운경'];
   // 코드 새로 줄 때마다 이 값 올림 - 홈 화면 맨 아래에 표시돼서, 최신 버전이 실제로
   // 적용됐는지 앱만 열어봐도 바로 확인할 수 있게 해둠.
-  const APP_VERSION = '2026.07.13-10';
+  const APP_VERSION = '2026.07.13-11';
   function colorKeyOf(name){ return PERSON_COLOR[name] || 'yellow'; }
   
   async function searchLocations(query){
@@ -1596,6 +1596,10 @@ function renderLetters() {
         if(event.data.itemId) navigateToItem(event.data.tab, event.data.itemId, event.data.commentTs, event.data.replyTs);
         else activateTab(event.data.tab);
       }
+      if(event.data && event.data.type === 'SW_VERSION'){
+        const tag = document.getElementById('appVersionTag');
+        if(tag) tag.textContent = `v${APP_VERSION} · ${event.data.version}`;
+      }
     });
   }
 
@@ -2357,6 +2361,7 @@ function watch(query, collectionName, onData){
     try{
       if(!('serviceWorker' in navigator) || !('Notification' in window)) return;
       const registration = await navigator.serviceWorker.register('firebase-messaging-sw.js');
+      if(registration.active) registration.active.postMessage({ type: 'GET_SW_VERSION' });
       const permission = await Notification.requestPermission();
       if(permission !== 'granted') return;
       const messaging = firebase.messaging();
