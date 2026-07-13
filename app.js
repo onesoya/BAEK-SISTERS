@@ -37,7 +37,7 @@ db.enablePersistence()
   const ALL_NAMES = ['소정','지수','운빈','운경'];
   // 코드 새로 줄 때마다 이 값 올림 - 홈 화면 맨 아래에 표시돼서, 최신 버전이 실제로
   // 적용됐는지 앱만 열어봐도 바로 확인할 수 있게 해둠.
-  const APP_VERSION = '2026.07.13-23';
+  const APP_VERSION = '2026.07.13-24';
   function colorKeyOf(name){ return PERSON_COLOR[name] || 'yellow'; }
   
   async function searchLocations(query){
@@ -511,7 +511,7 @@ async function uploadPhotos(photosArray, onProgress) {
       // 게시물 자체가 없어졌다면 게시물 삭제 안내
       if(!snap.exists){
         clearScrollState();
-        showPushToast('삭제된 게시물이야', null, null);
+        showPushToast('삭제된 게시물이야', null, null, null, null, true);
         return;
       }
 
@@ -533,7 +533,7 @@ async function uploadPhotos(photosArray, onProgress) {
         // 게시물은 있으므로 게시물 카드로 이동
         if(card) scrollToEl(card);
 
-        showPushToast('해당 댓글은 삭제됐어', null, null);
+        showPushToast('해당 댓글은 삭제됐어', null, null, null, null, true);
         return;
       }
 
@@ -560,7 +560,7 @@ async function uploadPhotos(photosArray, onProgress) {
           if(parentEl) scrollToEl(parentEl);
           else if(card) scrollToEl(card);
 
-          showPushToast('해당 답글은 삭제됐어', null, null);
+          showPushToast('해당 답글은 삭제됐어', null, null, null, null, true);
           return;
         }
       }
@@ -594,7 +594,7 @@ async function uploadPhotos(photosArray, onProgress) {
 
       if(!snap.exists){
         clearScrollState();
-        showPushToast('삭제된 게시물이야', null, null);
+        showPushToast('삭제된 게시물이야', null, null, null, null, true);
       }
 
       // 문서가 존재한다면 단순 데이터 로딩 지연일 수 있으므로 계속 기다림
@@ -2560,7 +2560,7 @@ function watch(query, collectionName, onData){
   let pushToastItemId = null;
   let pushToastCommentTs = null;
   let pushToastReplyTs = null;
-  function showPushToast(title, tab, itemId, commentTs, replyTs){
+  function showPushToast(title, tab, itemId, commentTs, replyTs, centered){
     pushToastTab = tab || null;
     pushToastItemId = itemId || null;
     pushToastCommentTs = commentTs || null;
@@ -2568,6 +2568,7 @@ function watch(query, collectionName, onData){
     document.getElementById('pushToastTitle').textContent = title || '';
     document.getElementById('pushToastBody').textContent = '';
     const toast = document.getElementById('pushToast');
+    toast.classList.toggle('centered', !!centered);
     toast.classList.remove('hidden');
     clearTimeout(pushToastTimer);
     pushToastTimer = setTimeout(()=>{ toast.classList.add('hidden'); }, 5000);

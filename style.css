@@ -684,6 +684,11 @@
     background:var(--white); border-radius:9px; padding:12px 14px;
     box-shadow:3px 3px 0 rgba(74,53,72,0.25); z-index:200; cursor:pointer;
   }
+  /* 삭제 안내처럼 눈에 더 띄어야 하는 경우, 화면 정중앙에 표시 */
+  .push-toast.centered{
+    top:50%; transform:translate(-50%, -50%);
+    text-align:center; padding:20px 18px;
+  }
   .push-toast-title{ font-family:'DungGeunMo',sans-serif; font-size:15px; margin-bottom:2px; }
   .push-toast-body{ font-size:14px; color:var(--plum-soft); }
 
