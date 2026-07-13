@@ -1,4 +1,53 @@
 // ============================================================================
+// 0. 삼성 인터넷 전용: FCM 자동 알림 대신 서비스워커가 직접 알림 표시
+// 반드시 Firebase importScripts()보다 먼저 등록되어야 함
+// ============================================================================
+self.addEventListener('push', (event) => {
+  const userAgent = self.navigator.userAgent || '';
+  const isSamsungInternet = /Android/i.test(userAgent) && /SamsungBrowser/i.test(userAgent);
+
+  // 삼성 인터넷이 아니면 Firebase의 기존 push 처리에 그대로 맡김
+  if (!isSamsungInternet || !event.data) return;
+
+  let payload;
+  try {
+    payload = event.data.json();
+  } catch (e) {
+    // 예상하지 못한 형식이면 Firebase 기본 처리에 맡김
+    return;
+  }
+
+  const data = (payload && payload.data) ? payload.data : {};
+  const notification = (payload && payload.notification) ? payload.notification : {};
+
+  // 우리 앱 알림이 아니면 Firebase 기본 처리에 맡김
+  if (!data.tab && !data.link) return;
+
+  // 뒤에서 등록될 Firebase의 push 리스너가 같은 알림을 또 표시하지 못하게 차단
+  event.stopImmediatePropagation();
+
+  const title = notification.title || data.title || '백씨스터즈';
+  const body = notification.body || data.body || '';
+  const notificationData = Object.assign({}, data);
+
+  // 혹시 data.link가 빠진 형식이라면 fcmOptions.link로 보충
+  if (!notificationData.link && payload.fcmOptions && payload.fcmOptions.link) {
+    notificationData.link = payload.fcmOptions.link;
+  }
+
+  const options = {
+    body,
+    data: notificationData,
+    tag: data.notifId || undefined,
+    icon: `${self.registration.scope}icon-180.png`
+  };
+
+  event.waitUntil(
+    self.registration.showNotification(title, options)
+  );
+});
+
+// ============================================================================
 // 1. 커스텀 알림 클릭 리스너 (반드시 Firebase 로드보다 최상단에 위치해야 함!)
 // ============================================================================
 self.addEventListener('notificationclick', (event) => {
@@ -37,31 +86,35 @@ self.addEventListener('notificationclick', (event) => {
       await savePendingNotif(navPayload);
 
       const windowClients = await clients.matchAll({ type: 'window', includeUncontrolled: true });
-      // 아무 창이나 잡지 않고, 정확히 "우리 앱 범위 안의" 창인지 확인
-      const appClient = windowClients.find((client) => client.url.startsWith(self.registration.scope));
+      // 같은 앱 범위에 속한 창을 하나만 임의로 고르지 않고 모두 찾음 - 삼성인터넷이
+      // 예전 작업 창을 여러 개 유지하는 경우에도, 어느 창이 복원되든 새 알림 정보를
+      // 받을 수 있게 함
+      const appClients = windowClients.filter((client) => client.url.startsWith(self.registration.scope));
 
-      if (appClient) {
+      if (appClients.length > 0) {
         const userAgent = self.navigator.userAgent || '';
         const isSamsungInternet = /Android/i.test(userAgent) && /SamsungBrowser/i.test(userAgent);
 
-        // 삼성인터넷의 설치형 PWA가 화면 꺼진 채로 잠들어 있으면, postMessage가 전달 안
-        // 되고 그냥 "원래 있던 작업 화면"만 다시 앞으로 나오는 것으로 보여서(새 알림이
-        // 아니라 이 세션의 첫 알림/홈 상태가 반복 재현됨), 삼성인터넷에서는 새 알림
-        // 주소로 기존 창 자체를 강제 이동시킴. 다른 브라우저/기기는 기존 방식 유지.
-        if (isSamsungInternet && 'navigate' in appClient) {
+        if (isSamsungInternet) {
+          // 삼성인터넷에서는 URL 강제 navigate를 쓰지 않음 (안드로이드가 앱의 최초 실행
+          // 주소를 다시 복원하면서 새 주소와 충돌하는 현상이 있었음). 대신 이제 알림
+          // 표시 자체를 우리 서비스워커가 직접 하므로(위 0번 push 리스너), 클릭도
+          // 확실히 이 notificationclick으로 들어옴 - 열려있는 모든 창에 새 정보를 전달.
+          appClients.forEach((client) => {
+            client.postMessage(navPayload);
+          });
+          const focusTarget = appClients.find((client) => client.focused) || appClients[0];
           try {
-            const forcedUrl = new URL(fallbackUrl, self.registration.scope);
-            // 같은 경로라도 매번 새로운 탐색으로 인식하도록 고유값을 추가
-            forcedUrl.searchParams.set('_push', Date.now().toString());
-            const navigatedClient = await appClient.navigate(forcedUrl.href);
-            if (navigatedClient) await navigatedClient.focus();
-            else await appClient.focus();
-            return;
+            await focusTarget.focus();
           } catch (e) {
-            // navigate가 실패하면 아래의 기존 방식으로 다시 시도
+            // postMessage가 잠든 페이지에서 유실돼도, 위에서 IndexedDB에 저장했으므로
+            // 앱 복귀 후 CHECK_PENDING_NOTIF로 다시 복구됨
           }
+          return;
         }
 
+        // 다른 브라우저는 기존처럼 첫 앱 창에 전달
+        const appClient = appClients.find((client) => client.focused) || appClients[0];
         // focus()가 실패하거나 늦어져도 메시지는 이미 전달되도록, postMessage를 먼저 보냄
         appClient.postMessage(navPayload);
         try {
@@ -82,7 +135,7 @@ self.addEventListener('notificationclick', (event) => {
 // ============================================================================
 // 2. 서비스워커 갱신 및 상태 관리
 // ============================================================================
-const SW_VERSION = 'sw-2026.07.13-13';
+const SW_VERSION = 'sw-2026.07.13-14';
 
 self.addEventListener('install', () => {
   self.skipWaiting();
