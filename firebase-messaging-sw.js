@@ -82,7 +82,7 @@ self.addEventListener('notificationclick', (event) => {
 // ============================================================================
 // 2. 서비스워커 갱신 및 상태 관리
 // ============================================================================
-const SW_VERSION = 'sw-2026.07.13-11';
+const SW_VERSION = 'sw-2026.07.13-12';
 
 self.addEventListener('install', () => {
   self.skipWaiting();
@@ -228,14 +228,18 @@ messaging.onBackgroundMessage(async (payload) => {
     } catch (e) { /* 무시 - 미지원 기기/브라우저일 수 있음 */ }
   }
 
-  // 이 우회는 notificationclick이 아예 안 터지는 아이폰(iPhone/iPod)에만 적용함.
-  // 아이패드는 원래도 notificationclick이 정상 작동하고, 안드로이드도 기존
-  // postMessage/focus 경로가 잘 되고 있어서 - 여기서 다 같이 저장해두면
-  // "알림을 안 눌렀는데 나중에 앱을 열었을 때 자동으로 그 게시글로 이동해버리는"
-  // 부작용이 생길 수 있음. 그 위험을 정말 필요한 기기로만 좁힘.
+  // 이 우회는 notificationclick이 아예 안 터지는 기기/브라우저에 적용함.
+  // 처음엔 아이폰만 해당됐는데, 삼성인터넷도 화면 꺼진 채 잠든 설치형 PWA에서
+  // notificationclick 자체가 안 터지는 것으로 의심돼서 여기 포함시킴.
+  // 아이패드는 원래도 notificationclick이 정상 작동해서 그대로 뺴둠.
+  // 참고: 이 우회를 켜두면 "알림을 안 눌렀는데 나중에 앱 아이콘으로 직접 열었을 때
+  // 자동으로 최신 알림의 게시글로 이동해버리는" 부작용이 아이폰과 마찬가지로
+  // 삼성인터넷에서도 생길 수 있음 - notificationclick 발생 여부를 구분할 방법이 없어서
+  // 감수하는 트레이드오프임.
   const userAgent = self.navigator.userAgent || '';
   const isIPhone = /iPhone|iPod/i.test(userAgent);
-  if (!isIPhone) return;
+  const isSamsungInternet = /Android/i.test(userAgent) && /SamsungBrowser/i.test(userAgent);
+  if (!isIPhone && !isSamsungInternet) return;
 
   await savePendingNotif({
     type: 'navigate',
