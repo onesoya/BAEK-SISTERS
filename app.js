@@ -37,7 +37,7 @@ db.enablePersistence()
   const ALL_NAMES = ['소정','지수','운빈','운경'];
   // 코드 새로 줄 때마다 이 값 올림 - 홈 화면 맨 아래에 표시돼서, 최신 버전이 실제로
   // 적용됐는지 앱만 열어봐도 바로 확인할 수 있게 해둠.
-  const APP_VERSION = '2026.07.13-19';
+  const APP_VERSION = '2026.07.13-20';
   function colorKeyOf(name){ return PERSON_COLOR[name] || 'yellow'; }
   
   async function searchLocations(query){
@@ -462,11 +462,10 @@ async function uploadPhotos(photosArray, onProgress) {
     resumeRetryTimers.forEach(clearTimeout);
     resumeRetryTimers = [];
 
-    // 혹시 안 지워진 채로 잠금화면/알림창에 남아있는 알림이 있으면 한 번에 정리
-    // (특정 알림만 콕 집어 지우는 것과 별개로, 앱을 열 때마다 한 번씩 싹 청소)
-    if('serviceWorker' in navigator && navigator.serviceWorker.controller){
-      navigator.serviceWorker.controller.postMessage({ type: 'CLEAR_ALL_NOTIFICATIONS' });
-    }
+    // 예전엔 여기서 앱을 열 때마다 CLEAR_ALL_NOTIFICATIONS를 보내서 잠금화면/알림창의
+    // 알림을 전부 지웠는데, 이러면 "안 읽음 = 실제로 확인/삭제 안 한 것" 기준과 어긋남
+    // (알림을 읽지도 않았는데 시스템 알림만 사라져서 헷갈릴 수 있음). 그래서 뺐음 -
+    // 이제 시스템 알림은 "전체 삭제" 버튼을 누르거나, 개별 알림을 읽음/삭제 처리할 때만 지워짐.
 
     const runResumeCheck = () => {
       checkPendingPush();       // 놓친 알림 있는지 서비스워커에 확인
@@ -1650,6 +1649,9 @@ function renderLetters() {
       if(event.data && event.data.type === 'navigate' && event.data.tab){
         if(event.data.itemId) navigateToItem(event.data.tab, event.data.itemId, event.data.commentTs, event.data.replyTs);
         else activateTab(event.data.tab);
+        // 잠금화면/알림창 알림을 눌러서 들어온 거면, 그 알림도 Firestore에서 읽음 처리함
+        // (이게 없으면 눌러서 이동은 되는데 앱 알림함/배지엔 계속 안 읽은 걸로 남아있었음)
+        if(event.data.notifId) markNotifRead(event.data.notifId);
         // 처리 완료했다고 서비스워커에 알려줘서, IndexedDB에 남아있던 기록을 지우게 함
         // (안 지우면 나중에 전혀 상관없는 시점에 이 알림이 다시 튀어나올 수 있음)
         if(navigator.serviceWorker.controller){
@@ -2544,6 +2546,22 @@ function startWatchers(){
     }
   }
 
+  // 앱이 완전히 꺼진 상태에서 알림을 눌러 콜드 스타트된 경우, 서비스워커의 postMessage를
+  // 받을 기존 창이 없어서 그 경로로는 읽음 처리가 안 됨. 대신 알림 주소 자체에
+  // ?notif=ID를 담아 보내뒀다가, 로그인 완료 시점에 이걸 읽어서 처리함.
+  function handleNotifQueryParam(){
+    const params = new URLSearchParams(window.location.search);
+    const notifId = params.get('notif');
+    if(notifId){
+      markNotifRead(notifId);
+      // 주소에서 지워서, 나중에 새로고침해도 같은 처리가 반복되지 않게 함
+      params.delete('notif');
+      const newSearch = params.toString();
+      const newUrl = window.location.pathname + (newSearch ? `?${newSearch}` : '') + window.location.hash;
+      history.replaceState(null, '', newUrl);
+    }
+  }
+
   function renderNotifResults(){
     const container = document.getElementById('notifResults');
     if(!container) return;
@@ -3333,6 +3351,7 @@ function startWatchers(){
         ensureMyProfile();
         startWatchers();
         activateTabFromHash();
+        handleNotifQueryParam(); // 콜드 스타트 시 URL에 담겨온 notif ID 읽음 처리
         trackVisit();
         watchVisitCounter();
         if('Notification' in window && Notification.permission === 'granted'){

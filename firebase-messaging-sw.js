@@ -21,7 +21,10 @@ self.addEventListener('notificationclick', (event) => {
     tab: data.tab,
     itemId: data.itemId,
     commentTs: data.commentTs,
-    replyTs: data.replyTs
+    replyTs: data.replyTs,
+    // 잠금화면/알림창에서 바로 눌렀을 때도 앱이 이 알림을 "읽음" 처리할 수 있도록 ID를 같이 전달.
+    // data에 notifId가 없으면(예전 버전 알림이거나 등) 태그 값으로라도 대체 시도.
+    notifId: data.notifId || event.notification.tag
   };
 
   const hashStr = [data.tab, data.itemId, data.commentTs, data.replyTs].filter(Boolean).join(':');
@@ -58,7 +61,7 @@ self.addEventListener('notificationclick', (event) => {
 // ============================================================================
 // 2. 서비스워커 갱신 및 상태 관리
 // ============================================================================
-const SW_VERSION = 'sw-2026.07.13-8';
+const SW_VERSION = 'sw-2026.07.13-10';
 
 self.addEventListener('install', () => {
   self.skipWaiting();
@@ -155,7 +158,7 @@ self.addEventListener('message', (event) => {
       })
     );
   }
-  // 앱을 열 때, 혹시 몰라서 잠금화면/알림창에 남아있는 알림을 전부 정리
+  // 알림함 "전체 삭제" 버튼을 눌렀을 때, 현재 기기의 잠금화면/알림창 알림을 전부 정리
   if (event.data && event.data.type === 'CLEAR_ALL_NOTIFICATIONS') {
     event.waitUntil(
       self.registration.getNotifications().then((notifs) => {
@@ -192,6 +195,18 @@ messaging.onBackgroundMessage(async (payload) => {
   const data = (payload && payload.data) ? payload.data : {};
   if (!data.tab) return;
 
+  // 앱이 완전히 꺼져있는 동안에도 배지 숫자를 갱신할 수 있게, 서버가 이 알림까지
+  // 포함한 "현재 총 안 읽은 개수"를 같이 보내줌 - 그 값으로 바로 배지를 갱신함.
+  // (앱이 켜져있을 때는 app.js의 Firestore 구독이 더 정확하게 실시간으로 갱신해주지만,
+  // 앱이 꺼진 상태에서 새 알림이 온 순간엔 이게 유일한 갱신 경로임)
+  const unreadCount = Number(data.unreadCount);
+  if ('setAppBadge' in self.navigator && Number.isFinite(unreadCount)) {
+    try {
+      if (unreadCount > 0) await self.navigator.setAppBadge(unreadCount);
+      else if ('clearAppBadge' in self.navigator) await self.navigator.clearAppBadge();
+    } catch (e) { /* 무시 - 미지원 기기/브라우저일 수 있음 */ }
+  }
+
   // 이 우회는 notificationclick이 아예 안 터지는 아이폰(iPhone/iPod)에만 적용함.
   // 아이패드는 원래도 notificationclick이 정상 작동하고, 안드로이드도 기존
   // postMessage/focus 경로가 잘 되고 있어서 - 여기서 다 같이 저장해두면
@@ -207,6 +222,7 @@ messaging.onBackgroundMessage(async (payload) => {
     itemId: data.itemId,
     commentTs: data.commentTs,
     replyTs: data.replyTs,
+    notifId: data.notifId,
     receivedAt: Date.now()
   });
   // showNotification()은 호출하지 않음 - notification 필드가 있어서 브라우저가 알아서 띄움
