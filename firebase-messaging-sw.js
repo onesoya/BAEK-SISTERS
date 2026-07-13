@@ -58,7 +58,7 @@ self.addEventListener('notificationclick', (event) => {
 // ============================================================================
 // 2. 서비스워커 갱신 및 상태 관리
 // ============================================================================
-const SW_VERSION = 'sw-2026.07.13-7';
+const SW_VERSION = 'sw-2026.07.13-8';
 
 self.addEventListener('install', () => {
   self.skipWaiting();
@@ -146,6 +146,22 @@ self.addEventListener('message', (event) => {
   }
   if (event.data && event.data.type === 'GET_SW_VERSION') {
     if (event.source) event.source.postMessage({ type: 'SW_VERSION', version: SW_VERSION });
+  }
+  // 앱에서 특정 알림을 읽음 처리했을 때, 잠금화면/알림창에 떠있는 그 알림도 같이 지움
+  if (event.data && event.data.type === 'CLOSE_NOTIFICATION' && event.data.tag) {
+    event.waitUntil(
+      self.registration.getNotifications({ tag: event.data.tag }).then((notifs) => {
+        notifs.forEach((n) => n.close());
+      })
+    );
+  }
+  // 앱을 열 때, 혹시 몰라서 잠금화면/알림창에 남아있는 알림을 전부 정리
+  if (event.data && event.data.type === 'CLEAR_ALL_NOTIFICATIONS') {
+    event.waitUntil(
+      self.registration.getNotifications().then((notifs) => {
+        notifs.forEach((n) => n.close());
+      })
+    );
   }
 });
 

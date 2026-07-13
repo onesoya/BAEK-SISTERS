@@ -37,7 +37,7 @@ db.enablePersistence()
   const ALL_NAMES = ['소정','지수','운빈','운경'];
   // 코드 새로 줄 때마다 이 값 올림 - 홈 화면 맨 아래에 표시돼서, 최신 버전이 실제로
   // 적용됐는지 앱만 열어봐도 바로 확인할 수 있게 해둠.
-  const APP_VERSION = '2026.07.13-17';
+  const APP_VERSION = '2026.07.13-19';
   function colorKeyOf(name){ return PERSON_COLOR[name] || 'yellow'; }
   
   async function searchLocations(query){
@@ -461,6 +461,12 @@ async function uploadPhotos(photosArray, onProgress) {
     if(document.visibilityState !== 'visible') return;
     resumeRetryTimers.forEach(clearTimeout);
     resumeRetryTimers = [];
+
+    // 혹시 안 지워진 채로 잠금화면/알림창에 남아있는 알림이 있으면 한 번에 정리
+    // (특정 알림만 콕 집어 지우는 것과 별개로, 앱을 열 때마다 한 번씩 싹 청소)
+    if('serviceWorker' in navigator && navigator.serviceWorker.controller){
+      navigator.serviceWorker.controller.postMessage({ type: 'CLEAR_ALL_NOTIFICATIONS' });
+    }
 
     const runResumeCheck = () => {
       checkPendingPush();       // 놓친 알림 있는지 서비스워커에 확인
@@ -2531,6 +2537,11 @@ function startWatchers(){
     if(!identity || !notifId) return;
     db.collection('notifications').doc(identity).collection('items').doc(notifId)
       .update({ read: true }).catch(err => console.error('알림 읽음 처리 실패', err));
+    // 이 알림을 보낼 때 같은 ID를 "태그"로 같이 심어뒀어서, 그 태그로 잠금화면/알림창의
+    // 해당 알림도 정확히 콕 집어서 지울 수 있음
+    if('serviceWorker' in navigator && navigator.serviceWorker.controller){
+      navigator.serviceWorker.controller.postMessage({ type: 'CLOSE_NOTIFICATION', tag: notifId });
+    }
   }
 
   function renderNotifResults(){
@@ -2586,6 +2597,9 @@ function startWatchers(){
       batch.delete(db.collection('notifications').doc(identity).collection('items').doc(n.id));
     });
     batch.commit().catch(err => console.error('알림 전체 삭제 실패', err));
+    if('serviceWorker' in navigator && navigator.serviceWorker.controller){
+      navigator.serviceWorker.controller.postMessage({ type: 'CLEAR_ALL_NOTIFICATIONS' });
+    }
   });
 
   // ---- 기념일 관리 모달 ----
@@ -3098,8 +3112,14 @@ function startWatchers(){
     let pollCount = 0;
     scrollPollInterval = setInterval(() => {
       pollCount++;
-      if(!pendingScrollTarget || pollCount > 20){
+      if(!pendingScrollTarget){
+        clearScrollState(); // 다른 경로(렌더 훅 등)에서 이미 성공했으면 조용히 정리만 함
+        return;
+      }
+      if(pollCount > 20){
         clearScrollState();
+        // 10초 넘게 찾아도 없으면, 그 사이에 게시글/댓글이 삭제됐을 가능성이 높음 -> 안내
+        showPushToast('앗, 게시글이나 댓글을 찾을 수 없어. 삭제됐을 수도 있어', null, null);
         return;
       }
       tryConsumePendingScroll();
