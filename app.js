@@ -135,7 +135,7 @@ db.enablePersistence()
 
   // 코드 새로 줄 때마다 이 값 올림 - 홈 화면 맨 아래에 표시돼서, 최신 버전이 실제로
   // 적용됐는지 앱만 열어봐도 바로 확인할 수 있게 해둠.
-  const APP_VERSION = '2026.07.14-29';
+  const APP_VERSION = '2026.07.15-1';
   function colorKeyOf(name){ return PERSON_COLOR[name] || 'yellow'; }
   
   async function searchLocations(query){
@@ -3307,19 +3307,33 @@ function startWatchers(){
     overlay.classList.remove('hidden');
     results.innerHTML = '<div class="empty-state">불러오는 중이야...</div>';
     try{
-      // 가족 4명용 소규모 앱이라 전체 기간을 그냥 다 불러옴 (개수 제한 없음)
-      const snap = await db.collection('dailyQuestions').orderBy(firebase.firestore.FieldPath.documentId(), 'desc').get();
+      // 가족 4명용 소규모 앱이라 전체 기간을 그냥 다 불러옴 (개수 제한 없음).
+      // 문서 ID 기준 정렬 쿼리는 빼고 단순 조회 후 앱에서 정렬 - 혹시 모를 쿼리
+      // 관련 문제(색인 등)를 피하기 위함
+      const snap = await db.collection('dailyQuestions').get();
       const items = [];
       snap.forEach(doc => {
         // 오늘 날짜는 홈 카드에서 이미 보고 있으니 아카이브에서는 그 전날들만 보여줌
         if(doc.id === localDateStr()) return;
-        const data = doc.data();
-        items.push({ date: doc.id, question: data.question || '', answers: data.answers || {} });
+        const data = doc.data() || {};
+
+        // 예전 버전에서 질문이 객체 형태로 저장됐을 수도 있어 안전하게 처리
+        const rawQuestion = data.question;
+        const question = typeof rawQuestion === 'string'
+          ? rawQuestion
+          : (rawQuestion && typeof rawQuestion.question === 'string' ? rawQuestion.question : '');
+
+        const answers = (data.answers && typeof data.answers === 'object' && !Array.isArray(data.answers))
+          ? data.answers : {};
+
+        items.push({ date: String(doc.id), question, answers });
       });
       if(items.length === 0){
         results.innerHTML = '<div class="empty-state"><span class="empty-emoji">💭</span>아직 쌓인 지난 질문이 없어.</div>';
         return;
       }
+      // Firestore 쿼리에서 정렬하지 않고 앱에서 날짜 역순으로 정렬
+      items.sort((a,b) => b.date.localeCompare(a.date));
       // 월별로 묶어서 표시 (YYYY-MM 기준)
       const groups = {};
       items.forEach(it => {
@@ -3333,10 +3347,14 @@ function startWatchers(){
           const day = Number(it.date.slice(8, 10));
           const isOpen = dailyQuestionArchiveExpanded.has(it.date);
           const answersHTML = ALL_NAMES.map(name => {
-            const a = it.answers[name];
+            const rawAnswer = it.answers[name];
+            // 현재 형식은 {text, updatedAt}이지만, 예전 문서에 문자열만 들어있어도 표시되게 함
+            const answerText = typeof rawAnswer === 'string'
+              ? rawAnswer
+              : (rawAnswer && typeof rawAnswer.text === 'string' ? rawAnswer.text : '');
             return `<div class="daily-q-archive-answer-row">
-              <span class="daily-q-archive-answer-name color-${colorKeyOf(name)}">${name}</span>
-              <span class="daily-q-archive-answer-text ${a ? '' : 'daily-q-answer-empty'}">${a ? escapeHTML(a.text) : '답하지 않았어'}</span>
+              <span class="daily-q-archive-answer-name color-${colorKeyOf(name)}">${escapeHTML(name)}</span>
+              <span class="daily-q-archive-answer-text ${answerText ? '' : 'daily-q-answer-empty'}">${answerText ? escapeHTML(answerText) : '답하지 않았어'}</span>
             </div>`;
           }).join('');
           return `<div class="daily-q-archive-row" data-archive-date="${it.date}">
@@ -3360,7 +3378,13 @@ function startWatchers(){
       });
     }catch(e){
       console.error('지난 질문 불러오기 실패', e);
-      results.innerHTML = '<div class="empty-state">불러오지 못했어. 잠시 후 다시 시도해줘.</div>';
+      const errorDetail = (e && (e.code || e.message)) ? String(e.code || e.message) : 'unknown-error';
+      results.innerHTML = `
+        <div class="empty-state">
+          불러오지 못했어. 잠시 후 다시 시도해줘.
+          <div style="margin-top:8px;font-size:11px;opacity:.65;">${escapeHTML(errorDetail)}</div>
+        </div>
+      `;
     }
   }
   document.getElementById('dailyQuestionArchiveCloseBtn').addEventListener('click', ()=>{
