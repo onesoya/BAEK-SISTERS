@@ -438,6 +438,20 @@
     </div>
   </div>
 
+  <div class="modal-overlay hidden" id="dailyPhotoCropModal">
+    <div class="modal-card crop-modal-card">
+      <div class="modal-title">사진 위치 정하기</div>
+      <div class="crop-hint">정사각형 안에서 사진을 움직이거나 확대해봐</div>
+      <div class="crop-viewport" id="cropViewport">
+        <img id="cropImg" draggable="false" alt="">
+      </div>
+      <div class="modal-btns">
+        <button class="btn" id="cropRetryBtn" style="background:#F0E4E9;color:var(--plum);">다시 선택</button>
+        <button class="btn" id="cropConfirmBtn">이대로 사용</button>
+      </div>
+    </div>
+  </div>
+
   <div class="modal-overlay hidden" id="profileMenuModal">
     <div class="modal-card" style="text-align:center;">
       <div class="modal-title" id="profileMenuTitle">나는 ...</div>

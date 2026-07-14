@@ -135,7 +135,7 @@ db.enablePersistence()
 
   // 코드 새로 줄 때마다 이 값 올림 - 홈 화면 맨 아래에 표시돼서, 최신 버전이 실제로
   // 적용됐는지 앱만 열어봐도 바로 확인할 수 있게 해둠.
-  const APP_VERSION = '2026.07.14-24';
+  const APP_VERSION = '2026.07.14-27';
   function colorKeyOf(name){ return PERSON_COLOR[name] || 'yellow'; }
   
   async function searchLocations(query){
@@ -3646,6 +3646,180 @@ function startWatchers(){
     renderPhotoPreviewGrid('dailyPhotoPreviewWrap', ()=>pendingDailyPhotoPhotos, (v)=>{ pendingDailyPhotoPhotos = v; });
     document.getElementById('dailyPhotoModal').classList.remove('hidden');
   }
+  // ---- 오늘의 한 장 전용 정사각형 자르기 (팬 + 핀치줌/휠줌 후 캔버스로 정확히 잘라냄) ----
+  (function(){
+    const modal = document.getElementById('dailyPhotoCropModal');
+    const viewport = document.getElementById('cropViewport');
+    const img = document.getElementById('cropImg');
+    const retryBtn = document.getElementById('cropRetryBtn');
+    const confirmBtn = document.getElementById('cropConfirmBtn');
+
+    let naturalW = 0, naturalH = 0;
+    let baseW = 0, baseH = 0; // 뷰포트를 꽉 채우는(cover) 기준 크기
+    let baseCoverScale = 1;   // 원본 1px당 baseW/baseH 배율
+    let userZoom = 1;         // 사용자가 추가로 확대한 배율 (1 이상)
+    let panX = 0, panY = 0;
+    let viewportSize = 0;
+
+    let isPanning = false, isPinching = false;
+    let startPanX = 0, startPanY = 0, startTouchX = 0, startTouchY = 0;
+    let startDist = 0, startZoom = 1;
+
+    function clampPan(){
+      const halfW = (baseW * userZoom) / 2, halfH = (baseH * userZoom) / 2;
+      const maxPanX = Math.max(0, halfW - viewportSize / 2);
+      const maxPanY = Math.max(0, halfH - viewportSize / 2);
+      panX = Math.min(maxPanX, Math.max(-maxPanX, panX));
+      panY = Math.min(maxPanY, Math.max(-maxPanY, panY));
+    }
+    function applyTransform(){
+      clampPan();
+      img.style.width = baseW + 'px';
+      img.style.height = baseH + 'px';
+      img.style.transform = `translate(-50%, -50%) translate(${panX}px, ${panY}px) scale(${userZoom})`;
+    }
+
+    function loadImageIntoCrop(file){
+      cropImageReady = false;
+      confirmBtn.disabled = true;
+
+      const fail = () => {
+        alert('사진을 불러오지 못했어. 다른 사진으로 다시 시도해줘.');
+        closeCropModal();
+      };
+
+      const reader = new FileReader();
+      reader.onload = (e)=>{
+        img.onload = ()=>{
+          naturalW = img.naturalWidth;
+          naturalH = img.naturalHeight;
+          if(!naturalW || !naturalH){ fail(); return; }
+          // 테두리를 제외한 실제 내부 너비 사용
+          viewportSize = viewport.clientWidth;
+          baseCoverScale = viewportSize / Math.min(naturalW, naturalH);
+          baseW = naturalW * baseCoverScale;
+          baseH = naturalH * baseCoverScale;
+          userZoom = 1; panX = 0; panY = 0;
+          applyTransform();
+          cropImageReady = true;
+          confirmBtn.disabled = false;
+        };
+        img.onerror = fail;
+        img.src = e.target.result;
+      };
+      reader.onerror = fail;
+      reader.readAsDataURL(file);
+    }
+
+    let pendingCropFile = null;
+    let cropImageReady = false;
+    window.openDailyPhotoCropModal = function(file){
+      pendingCropFile = file;
+      modal.classList.remove('hidden');
+      loadImageIntoCrop(file);
+    };
+    function closeCropModal(){
+      modal.classList.add('hidden');
+      // src를 비울 때 불필요한 오류 이벤트가 발생하지 않도록 먼저 해제
+      img.onload = null;
+      img.onerror = null;
+      img.removeAttribute('src');
+      pendingCropFile = null;
+      cropImageReady = false;
+      confirmBtn.disabled = true;
+      isPanning = false;
+      isPinching = false;
+    }
+    retryBtn.addEventListener('click', ()=>{
+      closeCropModal();
+      document.getElementById('dailyPhotoPickInput').click();
+    });
+
+    function touchDist(touches){
+      const dx = touches[0].clientX - touches[1].clientX;
+      const dy = touches[0].clientY - touches[1].clientY;
+      return Math.sqrt(dx*dx + dy*dy);
+    }
+    viewport.addEventListener('touchstart', (e)=>{
+      if(e.touches.length === 2){
+        isPinching = true; isPanning = false;
+        startDist = touchDist(e.touches);
+        startZoom = userZoom;
+      } else if(e.touches.length === 1){
+        isPanning = true; isPinching = false;
+        startTouchX = e.touches[0].clientX - panX;
+        startTouchY = e.touches[0].clientY - panY;
+      }
+    }, {passive: true});
+    viewport.addEventListener('touchmove', (e)=>{
+      if(isPinching && e.touches.length === 2){
+        e.preventDefault();
+        const dist = touchDist(e.touches);
+        userZoom = Math.min(4, Math.max(1, startZoom * (dist / startDist)));
+        applyTransform();
+      } else if(isPanning && e.touches.length === 1){
+        e.preventDefault();
+        panX = e.touches[0].clientX - startTouchX;
+        panY = e.touches[0].clientY - startTouchY;
+        applyTransform();
+      }
+    }, {passive: false});
+    viewport.addEventListener('touchend', ()=>{ isPanning = false; isPinching = false; });
+
+    // 데스크탑 대응: 드래그로 팬, 휠로 확대/축소
+    viewport.addEventListener('mousedown', (e)=>{
+      isPanning = true;
+      startTouchX = e.clientX - panX;
+      startTouchY = e.clientY - panY;
+    });
+    window.addEventListener('mousemove', (e)=>{
+      if(!isPanning) return;
+      panX = e.clientX - startTouchX;
+      panY = e.clientY - startTouchY;
+      applyTransform();
+    });
+    window.addEventListener('mouseup', ()=>{ isPanning = false; });
+    viewport.addEventListener('wheel', (e)=>{
+      e.preventDefault();
+      userZoom = Math.min(4, Math.max(1, userZoom - e.deltaY * 0.01));
+      applyTransform();
+    }, {passive: false});
+
+    confirmBtn.addEventListener('click', ()=>{
+      if(!pendingCropFile || !cropImageReady) return;
+      cropImageReady = false;
+      confirmBtn.disabled = true;
+
+      const totalScale = baseCoverScale * userZoom;
+      const renderedLeft = viewportSize/2 + panX - (baseW * userZoom)/2;
+      const renderedTop = viewportSize/2 + panY - (baseH * userZoom)/2;
+      const srcX = -renderedLeft / totalScale;
+      const srcY = -renderedTop / totalScale;
+      const srcSize = viewportSize / totalScale;
+
+      const outputSize = 900;
+      const canvas = document.createElement('canvas');
+      canvas.width = outputSize; canvas.height = outputSize;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, srcX, srcY, srcSize, srcSize, 0, 0, outputSize, outputSize);
+
+      const isPng = pendingCropFile.type === 'image/png';
+      canvas.toBlob((blob)=>{
+        if(!blob){
+          cropImageReady = true;
+          confirmBtn.disabled = false;
+          alert('사진을 처리하지 못했어. 다시 시도해줘.');
+          return;
+        }
+        // 이전에 골랐던 임시 사진이 있으면 메모리 정리 후 교체
+        revokePendingPhotoUrls(pendingDailyPhotoPhotos);
+        pendingDailyPhotoPhotos = [{ url: URL.createObjectURL(blob), blob }];
+        renderPhotoPreviewGrid('dailyPhotoPreviewWrap', ()=>pendingDailyPhotoPhotos, (v)=>{ pendingDailyPhotoPhotos = v; });
+        closeCropModal();
+      }, isPng ? 'image/png' : 'image/jpeg', isPng ? undefined : 0.6);
+    });
+  })();
+
   function closeDailyPhotoModal(){
     revokePendingPhotoUrls(pendingDailyPhotoPhotos);
     pendingDailyPhotoPhotos = [];
@@ -3655,17 +3829,14 @@ function startWatchers(){
     renderPhotoPreviewGrid('dailyPhotoPreviewWrap', ()=>pendingDailyPhotoPhotos, (v)=>{ pendingDailyPhotoPhotos = v; });
     document.getElementById('dailyPhotoModal').classList.add('hidden');
   }
-  setupPhotoPicker('dailyPhotoPickInput', 'dailyPhotoPickBtn', 'dailyPhotoPreviewWrap',
-    () => pendingDailyPhotoPhotos,
-    (photos) => {
-      // 한 장만 유지 (제일 최근에 고른 사진) - 그 전에 고르고 버려지는 사진의 임시 URL은 정리
-      const keptPhotos = photos.slice(-1);
-      const discardedPhotos = photos.slice(0, -1);
-      revokePendingPhotoUrls(discardedPhotos);
-      pendingDailyPhotoPhotos = keptPhotos;
-      renderPhotoPreviewGrid('dailyPhotoPreviewWrap', ()=>pendingDailyPhotoPhotos, (v)=>{ pendingDailyPhotoPhotos = v; });
-    }
-  );
+  document.getElementById('dailyPhotoPickBtn').addEventListener('click', ()=> document.getElementById('dailyPhotoPickInput').click());
+  document.getElementById('dailyPhotoPickInput').addEventListener('change', ()=>{
+    const input = document.getElementById('dailyPhotoPickInput');
+    const file = input.files && input.files[0];
+    input.value = '';
+    if(!file) return;
+    openDailyPhotoCropModal(file);
+  });
   document.getElementById('dailyPhotoCancelBtn').addEventListener('click', closeDailyPhotoModal);
   document.getElementById('dailyPhotoSaveBtn').addEventListener('click', async ()=>{
     if(!identity) return;
