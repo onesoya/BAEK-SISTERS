@@ -163,11 +163,14 @@
   }
   .home-today{ text-align:left; font-size:16px; color:var(--plum-soft); line-height:1.5; }
   .home-anniv-row{ display:flex; align-items:center; gap:6px; }
-  .anniv-add-btn{
-    width:22px; height:22px; border-radius:50%; border:1.5px solid var(--plum-soft);
-    background:var(--white); color:var(--plum-soft); font-size:14px; line-height:1; cursor:pointer;
-    display:flex; align-items:center; justify-content:center; flex-shrink:0; padding:0;
+  .anniv-manage-btn{
+    font-size:12.5px; font-family:inherit; font-weight:400; color:var(--plum-soft);
+    background:none; border:1.5px solid #F0E4E9; border-radius:8px; padding:4px 9px; cursor:pointer;
   }
+  .home-bottom-links{
+    display:flex; align-items:center; justify-content:center; gap:14px; margin-top:18px;
+  }
+  .home-bottom-links .visit-counter-row{ margin-top:0; }
   .home-mascot-row{
     display:flex; align-items:center; justify-content:center; gap:0px; /* 둘 사이 간격 제거 */
     padding:6px 0 4px;
@@ -206,7 +209,7 @@
     display:flex; align-items:center; gap:8px; padding:8px 0;
     border-top:1px solid #F5EBEE; font-size:15px;
   }
-  .home-feed-item:first-of-type{ border-top:none; padding-top:0; }
+  .home-next-label + .home-feed-item{ border-top:none; padding-top:0; }
   .home-feed-item:not(:last-child){ }
   .home-feed-item{ cursor:pointer; }
   .home-feed-author{
@@ -218,6 +221,116 @@
   .home-feed-author.color-blue{ background:var(--blue-soft); color:#2B5CA8; }
   .home-feed-text{ flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--plum); }
   .home-feed-time{ font-size:11.5px; color:var(--plum-soft); flex-shrink:0; }
+
+  /* 오늘의 질문 */
+  .daily-q-text{ font-family:'DungGeunMo',sans-serif; font-size:16px; color:var(--plum); margin-bottom:10px; line-height:1.4; }
+  .daily-q-answers{ display:flex; flex-direction:column; gap:7px; }
+  .daily-q-row{ display:flex; align-items:center; gap:8px; font-size:13.5px; }
+  .daily-q-name{
+    font-family:'DungGeunMo',sans-serif; font-size:12px; padding:2px 8px; border-radius:8px; flex-shrink:0;
+  }
+  .daily-q-name.color-yellow{ background:var(--yellow-soft); color:#8A6600; }
+  .daily-q-name.color-red{ background:var(--red-soft); color:#C24040; }
+  .daily-q-name.color-green{ background:var(--green-soft); color:#2E7A42; }
+  .daily-q-name.color-blue{ background:var(--blue-soft); color:#2B5CA8; }
+  .daily-q-answer{ color:var(--plum); word-break:break-word; }
+  .daily-q-answer-empty{ color:var(--plum-soft); font-style:italic; }
+  .daily-q-my-row{ display:flex; gap:6px; }
+  .daily-q-my-row input{
+    flex:1; min-width:0; border:2px solid #F0E4E9; border-radius:8px; padding:7px 10px;
+    font-size:13.5px; font-family:inherit; color:var(--plum); background:var(--cream);
+  }
+  .daily-q-my-row button{
+    flex-shrink:0; background:var(--pink); color:var(--white); border:none; border-radius:8px;
+    padding:0 14px; font-size:13px; font-family:'DungGeunMo',sans-serif; cursor:pointer;
+  }
+  .daily-q-poll-options{ display:flex; flex-direction:column; gap:7px; }
+  .daily-q-poll-btn{
+    display:flex; align-items:center; justify-content:space-between; gap:8px; width:100%;
+    background:var(--cream); border:2px solid #F0E4E9; border-radius:9px; padding:9px 12px;
+    cursor:pointer; text-align:left;
+  }
+  .daily-q-poll-btn.active{ background:var(--pink); border-color:var(--pink); }
+  .daily-q-poll-btn-text{
+    font-family:'DungGeunMo',sans-serif; font-size:14px; color:var(--plum); flex-shrink:0;
+  }
+  .daily-q-poll-btn.active .daily-q-poll-btn-text{ color:var(--white); }
+  .daily-q-poll-voters{ font-size:11.5px; color:var(--plum-soft); text-align:right; }
+  .daily-q-poll-btn.active .daily-q-poll-voters{ color:rgba(255,255,255,0.85); }
+  .daily-q-archive-link{
+    display:block; width:100%; text-align:center; background:none; border:none;
+    color:var(--plum-soft); font-size:12.5px; padding:10px 0 0; cursor:pointer; text-decoration:underline;
+  }
+  .daily-q-archive-month-label{
+    font-family:'DungGeunMo',sans-serif; font-size:15px; color:var(--plum); margin:16px 0 8px;
+  }
+  .daily-q-archive-month-label:first-child{ margin-top:0; }
+  .daily-q-archive-row{
+    display:flex; gap:10px; padding:9px 0; border-top:1px solid #F5EBEE; font-size:14px; cursor:pointer;
+  }
+  .daily-q-archive-day{ flex-shrink:0; color:var(--plum-soft); font-family:'DungGeunMo',sans-serif; }
+  .daily-q-archive-question{ color:var(--plum); }
+  .daily-q-archive-answers{
+    background:var(--cream); border-radius:8px; padding:10px 12px; margin-bottom:4px;
+    display:flex; flex-direction:column; gap:6px;
+  }
+  .daily-q-archive-answer-row{ display:flex; align-items:center; gap:8px; font-size:13px; }
+  .daily-q-archive-answer-name{
+    font-family:'DungGeunMo',sans-serif; font-size:11.5px; padding:2px 7px; border-radius:7px; flex-shrink:0;
+  }
+  .daily-q-archive-answer-name.color-yellow{ background:var(--yellow-soft); color:#8A6600; }
+  .daily-q-archive-answer-name.color-red{ background:var(--red-soft); color:#C24040; }
+  .daily-q-archive-answer-name.color-green{ background:var(--green-soft); color:#2E7A42; }
+  .daily-q-archive-answer-name.color-blue{ background:var(--blue-soft); color:#2B5CA8; }
+  .daily-q-archive-answer-text{ color:var(--plum); word-break:break-word; }
+
+  /* 오늘의 한 장 */
+  .daily-photo-grid{ display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  .daily-photo-cell{
+    position:relative; aspect-ratio:1/1; border-radius:10px; overflow:hidden; cursor:pointer;
+    border:2px solid #F0E4E9;
+  }
+  .daily-photo-cell img{ width:100%; height:100%; object-fit:cover; display:block; }
+  .daily-photo-name{
+    position:absolute; left:5px; bottom:5px; font-family:'DungGeunMo',sans-serif; font-size:11px;
+    padding:2px 7px; border-radius:7px; background:rgba(255,255,255,0.9);
+  }
+  .daily-photo-name.color-yellow{ color:#8A6600; }
+  .daily-photo-name.color-red{ color:#C24040; }
+  .daily-photo-name.color-green{ color:#2E7A42; }
+  .daily-photo-name.color-blue{ color:#2B5CA8; }
+  .daily-photo-replace-btn{
+    position:absolute; right:5px; bottom:5px; font-size:10.5px; padding:2px 7px; border-radius:7px;
+    background:rgba(255,255,255,0.9); border:none; color:var(--plum-soft); cursor:pointer;
+    font-family:'DungGeunMo',sans-serif;
+  }
+  .daily-photo-empty{
+    display:flex; align-items:center; justify-content:center; background:var(--cream);
+    text-align:center; padding:8px;
+  }
+  .daily-photo-empty-text{ font-size:11.5px; color:var(--plum-soft); line-height:1.4; }
+
+  .home-board-feed-item{
+    display:flex; align-items:center; gap:8px; padding:8px 0;
+    border-top:1px solid #F5EBEE; font-size:15px; cursor:pointer;
+  }
+  .home-next-label + .home-board-feed-item{ border-top:none; padding-top:0; }
+  .home-board-feed-actions{ display:flex; align-items:center; gap:8px; flex-shrink:0; }
+  .home-board-comment-btn{
+    background:none; border:none; font-size:14px; color:var(--plum-soft);
+    display:inline-flex; align-items:center; gap:4px; cursor:pointer; padding:4px 0;
+  }
+  .home-board-comment-btn .chat-icon{ font-size:16px; }
+
+  /* 최근 활동 - 하고 싶은 것/함께한 날/편지는 홈에서 바로 좋아요·댓글 가능 */
+  .home-feed-item-rich{
+    padding:10px 0; border-top:1px solid #F5EBEE; cursor:pointer;
+  }
+  .home-next-label + .home-feed-item-rich{ border-top:none; padding-top:0; }
+  .home-feed-rich-top{ display:flex; align-items:center; gap:8px; margin-bottom:4px; }
+  .home-feed-rich-label{ font-size:12px; color:var(--plum-soft); flex:1; }
+  .home-feed-rich-text{ font-size:14.5px; color:var(--plum); word-break:break-word; margin-bottom:6px; }
+  .home-feed-rich-actions{ display:flex; gap:10px; }
   .home-throwback-card{border:2.5px solid var(--plum);
     background:linear-gradient(135deg, var(--pink-soft), var(--yellow-soft));
     border-radius:10px; padding:16px; margin-bottom:14px; cursor:pointer;
@@ -227,6 +340,16 @@
   .home-throwback-label{ font-size:12px; color:#8A5A6A; margin-bottom:3px; }
   .home-throwback-title{ font-family:'DungGeunMo',sans-serif; font-size:16px; color:var(--plum); }
   .app-version-tag{ text-align:center; font-size:10px; color:#C7BED6; margin-top:16px; padding-bottom:4px; }
+
+  /* 약속(일정/하고 싶은 것), 추억(함께한 날/편지) 내부 전환 탭 */
+  .sub-tab-row{ display:flex; gap:8px; margin-bottom:16px; }
+  .sub-tab-btn{
+    flex:1; background:var(--white); border:2px solid var(--plum); border-radius:10px;
+    font-family:'DungGeunMo',sans-serif; font-size:14px; color:var(--plum);
+    padding:9px 6px; cursor:pointer; text-align:center;
+    box-shadow:2px 2px 0 rgba(74,53,72,0.2);
+  }
+  .sub-tab-btn.active{ background:var(--plum); color:var(--white); }
 
   .section-title{
     font-family:'DungGeunMo',sans-serif;
@@ -454,6 +577,29 @@
   .group-content{ display:flex; flex-direction:column; gap:10px; margin-bottom:10px; }
   .group-content.wish-group{ gap:0; }
 
+  /* 오늘의 한 장 모아보기 - 이 컨테이너 안에서는 group-content가 그리드로 표시됨 */
+  .dp-archive-month-label{
+    font-family:'DungGeunMo',sans-serif; font-size:15px; color:var(--plum); margin:16px 0 8px;
+  }
+  .dp-archive-month-label:first-child{ margin-top:0; }
+  .dp-archive-grid{ display:grid; grid-template-columns:repeat(3, 1fr); gap:6px; margin-bottom:10px; }
+  .dp-archive-thumb{
+    position:relative; aspect-ratio:1/1; border-radius:8px; overflow:hidden; cursor:pointer;
+  }
+  .dp-archive-thumb img{ width:100%; height:100%; object-fit:cover; display:block; }
+  .dp-archive-thumb-name{
+    position:absolute; left:4px; bottom:4px; font-family:'DungGeunMo',sans-serif; font-size:9.5px;
+    padding:1px 5px; border-radius:6px; background:rgba(255,255,255,0.9);
+  }
+  .dp-archive-thumb-name.color-yellow{ color:#8A6600; }
+  .dp-archive-thumb-name.color-red{ color:#C24040; }
+  .dp-archive-thumb-name.color-green{ color:#2E7A42; }
+  .dp-archive-thumb-name.color-blue{ color:#2B5CA8; }
+  .dp-archive-thumb-date{
+    position:absolute; right:4px; top:4px; font-size:9.5px; color:var(--white);
+    padding:1px 5px; border-radius:6px; background:rgba(74,53,72,0.55);
+  }
+
   .filter-notice{
     display:flex; align-items:center; justify-content:space-between;
     background:var(--pink-soft); border-radius:9px; padding:10px 14px; margin-bottom:12px;
@@ -524,6 +670,10 @@
     border-color:var(--pink);
     box-shadow:3px 3px 0 rgba(155,127,224,0.35);
   }
+  /* 복작방 전용 - 접었다 펴는 방식이 아니라 작성자/날짜/본문/사진/반응이 다 바로 보이는 피드형 */
+  .board-feed-header{ display:flex; align-items:center; gap:6px; margin-bottom:8px; }
+  .board-feed-header .post-summary-meta{ flex:1; margin-top:0; }
+  .board-feed-title{ font-family:'DungGeunMo',sans-serif; font-size:15px; margin-bottom:4px; }
   .pinned-badge{
     display:inline-flex; align-items:center; gap:3px; font-family:'DungGeunMo',sans-serif;
     font-size:11px; color:var(--pink); background:var(--pink-soft);
@@ -614,7 +764,29 @@
   .status-card.color-blue .s-name{ color:#2B5CA8; }
   .status-card .s-emoji{ font-size:21px; }
   .status-card .s-text{ font-size:12.5px; color:var(--plum); margin-top:3px; line-height:1.3; word-break:break-word; }
+  .status-card .s-memo{ font-size:11px; color:var(--plum-soft); margin-top:2px; line-height:1.3; word-break:break-word; }
   .status-card .s-time{ font-size:10px; color:var(--plum-soft); margin-top:5px; }
+  /* 24시간 지난 상태는 흐리게 표시 */
+  .status-card.status-stale{ opacity:0.55; }
+  /* 상태에 바로 누르는 빠른 반응 (고정 4개 + 다른 이모지 고르는 + 버튼) */
+  .s-reaction-row{ display:flex; gap:4px; margin-top:7px; flex-wrap:wrap; }
+  .s-reaction-btn, .s-reaction-more-btn{
+    background:var(--cream); border:1.5px solid #F0E4E9; border-radius:8px;
+    font-size:12px; padding:3px 7px; cursor:pointer; line-height:1.2;
+  }
+  .s-reaction-btn.active{ background:var(--pink); border-color:var(--pink); }
+  .s-reaction-more-btn{ color:var(--plum-soft); font-family:'DungGeunMo',sans-serif; }
+  .s-reaction-list{ margin-top:6px; font-size:10.5px; color:var(--plum-soft); line-height:1.5; }
+  .s-reaction-tag{ margin-right:5px; }
+
+  /* 상태 모달 - 빠른 선택 그리드 */
+  .status-quick-grid{ display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:12px; }
+  .status-quick-btn{
+    background:var(--cream); border:2px solid #F0E4E9; border-radius:9px;
+    font-family:'DungGeunMo',sans-serif; font-size:14px; color:var(--plum);
+    padding:10px 6px; cursor:pointer; text-align:center;
+  }
+  .status-quick-btn.active{ background:var(--pink); border-color:var(--pink); color:var(--white); font-weight:600; }
 
   /* 홈 - 다음 데이트 참여자 */
   .home-next-participants{ display:flex; flex-wrap:wrap; gap:5px; margin-top:8px; }

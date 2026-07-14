@@ -44,9 +44,98 @@ db.enablePersistence()
   // 4인 신원 체계
   const PERSON_COLOR = { '소정':'yellow', '지수':'red', '운빈':'green', '운경':'blue' };
   const ALL_NAMES = ['소정','지수','운빈','운경'];
+
+  // 오늘의 질문 - 투표형(선택지) 질문을 만드는 헬퍼. 텍스트형과 섞여서 같은 배열에 들어감
+  function poll(question, options){
+    return { type: 'poll', question, options };
+  }
+
+  // ---- 오늘의 질문 100개 (카테고리별) ----
+  // 서열/외모/능력 평가성 질문은 뺐고, 같은 카테고리가 연속으로 안 나오게
+  // 아래에서 카테고리를 라운드로빈으로 섞어서 최종 순서를 만듦
+  const DAILY_QUESTION_CATEGORIES = [
+    [ // 1. 오늘과 요즘
+      '오늘 하루를 이모지 하나로 표현한다면?', '지금 가장 먹고 싶은 음식은?', '오늘 제일 듣고 싶은 말은?',
+      '지금 당장 하고 싶은 일은?', '오늘 있었던 가장 사소한 좋은 일은?', '요즘 나를 가장 피곤하게 하는 것은?',
+      poll('오늘의 기분을 날씨로 표현한다면?', ['맑음','흐림','비','눈']), '지금 내 머릿속을 가장 많이 차지하는 생각은?',
+      '오늘 나에게 점수를 준다면 100점 만점에 몇 점?', '지금 있는 장소에서 가장 마음에 드는 물건은?',
+      '오늘 가장 많이 한 말은?', '오늘 가장 웃겼던 순간은?', '지금 당장 집에 가면 가장 먼저 할 일은?',
+      '요즘 기다리고 있는 것은?', '오늘의 나에게 작은 상을 준다면 무엇을 주고 싶어?', '지금 듣고 있는 소리는?',
+      '이번 주에 꼭 끝내고 싶은 일은?', '최근 새롭게 생긴 습관은?', '오늘 하루 중 다시 돌아가고 싶은 순간은?',
+      '내일의 나에게 한마디 남긴다면?'
+    ],
+    [ // 2. 음식과 취향
+      '평생 한 종류의 면 요리만 먹는다면?', poll('떡볶이는 밀떡파, 쌀떡파?', ['밀떡','쌀떡']), poll('탕수육은 부먹, 찍먹, 상관없음?', ['부먹','찍먹','상관없음']),
+      '요즘 가장 자주 시켜 먹는 메뉴는?', '편의점에서 무조건 집는 것은?', '내가 가장 자신 있게 만들 수 있는 음식은?',
+      '지금 냉장고에 꼭 있었으면 하는 것은?', '평생 포기하기 가장 어려운 음식은?', '최근 먹은 것 중 다시 먹고 싶은 것은?',
+      '우리 넷이 함께 먹으러 가면 좋을 메뉴는?', poll('아침밥으로 가장 좋은 음식은?', ['밥','빵','시리얼','안 먹어']), '비 오는 날 생각나는 음식은?',
+      poll('여행지에서 음식과 관광 중 더 중요한 것은?', ['음식','관광','둘 다 중요']), '카페에서 가장 자주 주문하는 메뉴는?',
+      '남들은 좋아하지만 나는 별로인 음식은?', '남들은 별로라지만 나는 좋아하는 음식은?',
+      poll('가장 좋아하는 아이스크림 맛은?', ['초코','바닐라','딸기','기타']), '야식으로 하나만 고른다면?', '지금까지 먹어본 것 중 가장 비쌌던 음식은?',
+      '우리 가족 음식 중 가장 생각나는 메뉴는?'
+    ],
+    [ // 3. 콘텐츠와 소비 생활
+      '요즘 가장 많이 듣는 노래는?', '최근 끝까지 재미있게 본 작품은?', '다시 처음부터 보고 싶은 드라마나 영화는?',
+      '내 인생의 예능 프로그램 하나를 고른다면?', '최근 저장한 사진이나 영상은 무엇에 관한 것이었어?',
+      '요즘 자주 보는 유튜브 콘텐츠는?', '좋아하는데 남들에게 잘 말하지 않는 콘텐츠는?',
+      '한 작품 속 인물로 하루를 살아본다면 누구?', '지금 추천하고 싶은 노래 한 곡은?',
+      '최근 가장 잘 샀다고 생각하는 물건은?', '장바구니에 오래 담겨 있는 물건은?', '돈이 아깝지 않은 소비는?',
+      '돈이 조금 아까웠던 최근 소비는?', '10만 원이 갑자기 생기면 어디에 쓸 거야?',
+      '가격을 보지 않고 하나 살 수 있다면 무엇을 사고 싶어?', '집에 이미 많은데 계속 사게 되는 물건은?',
+      '내가 유독 까다롭게 고르는 물건은?', '최근 누군가에게 영업당한 것은?',
+      '우리 중 한 명에게 선물을 준다면 누구에게 무엇을 주고 싶어?', '지금 내 휴대폰 배경화면은 무엇이야?'
+    ],
+    [ // 4. 서로를 알아가는 질문
+      '우리 넷이 함께 있을 때 가장 좋은 점은?', '우리 넷이 만나면 꼭 하게 되는 행동은?',
+      '최근 사촌 중 한 명 때문에 웃었던 순간은?', poll('고민이 있을 때 가장 원하는 반응은?', ['그냥 들어주기','해결책 말해주기','맛있는 거 사주기','혼자 둘 시간 주기']),
+      poll('여행 계획은 어느 쪽이야?', ['꼼꼼하게 계획','큰 것만 계획','거의 즉흥','누군가를 따라가기']), poll('맛집을 고를 때 가장 중요한 것은?', ['맛','분위기','가격','거리']),
+      poll('갑자기 여행 가자는 연락이 오면?', ['바로 간다','일정부터 확인','계획이 필요해','집이 좋아']), poll('무인도에 하나만 가져간다면?', ['칼','불 피울 도구','마실 물','통신 장비']),
+      '우리 넷을 하나의 그룹명으로 다시 짓는다면?', '각자에게 어울리는 동물을 하나씩 정한다면?',
+      '사촌들에게 아직 말하지 않았던 내 소소한 특징은?', '내가 생각하는 나의 첫인상과 실제 성격의 차이는?',
+      '다른 세 사람에게 배우고 싶은 점은?', '사촌 중 한 명과 하루 동안 삶을 바꾼다면 누구?',
+      '우리 넷이 함께 배워보고 싶은 것은?', '우리끼리 만들면 재미있을 전통은?',
+      '넷이 여행 간다면 꼭 맡고 싶은 역할은?', '나와 가장 취향이 비슷하다고 느끼는 사람은?',
+      '반대로 나와 취향이 가장 다르지만 재미있는 사람은?', '다음 모임에서 꼭 하고 싶은 것은?'
+    ],
+    [ // 5. 자매와 가족 이야기
+      '내 자매와 가장 닮았다고 느끼는 부분은?', '내 자매와 정말 다르다고 느끼는 부분은?',
+      '자매에게 고맙지만 평소 잘 말하지 못한 것은?', '어릴 때 자매와 가장 많이 다퉜던 이유는?',
+      '지금 생각하면 웃긴 자매와의 싸움은?', '자매가 있어서 다행이라고 느낀 순간은?',
+      '상대 자매쌍을 보며 우리 자매와 비슷하다고 느낀 점은?', '네 명 중 어릴 때와 가장 달라진 것 같은 사람은?',
+      '가족 모임에서 가장 기억에 남는 사건은?', '어릴 때 우리 넷이 함께했던 일 중 다시 해보고 싶은 것은?'
+    ],
+    [ // 6. 상상하면 재미있는 질문
+      '내일 갑자기 하루가 완전히 비면 무엇을 할 거야?', '한 달 동안 어느 도시에서든 살 수 있다면 어디?',
+      poll('평생 여름과 겨울 중 하나만 살아야 한다면?', ['여름','겨울']), poll('과거와 미래 중 한 곳만 다녀올 수 있다면?', ['과거','미래']),
+      '일주일 동안 다른 직업을 체험한다면 무엇?', '내 방에 비밀 공간을 하나 만들 수 있다면 무엇으로 꾸밀 거야?',
+      poll('로또에 당첨되면 사촌들에게 가장 먼저 알릴 거야?', ['바로 알릴 거야','나만 알고 있을 거야']), '우리 넷이 가게를 연다면 어떤 가게가 어울릴까?',
+      '넷이 함께 방송에 출연한다면 어떤 프로그램이 좋을까?', '10년 뒤에도 우리 넷이 꼭 함께하고 있었으면 하는 것은?'
+    ]
+  ];
+  // 카테고리를 라운드로빈으로 섞어서 하나의 순서로 합침 (같은 카테고리 연속 방지)
+  function buildQuestionBank(categories){
+    const bank = [];
+    const maxLen = Math.max(...categories.map(c => c.length));
+    for(let i = 0; i < maxLen; i++){
+      for(const cat of categories){
+        if(i < cat.length) bank.push(cat[i]);
+      }
+    }
+    return bank;
+  }
+  const DAILY_QUESTION_BANK = buildQuestionBank(DAILY_QUESTION_CATEGORIES);
+  // 날짜마다 자동으로 질문 하나를 고르기 위한 기준일 - 다들 같은 날엔 같은 질문이 나오도록,
+  // 순수하게 날짜 계산만으로 정해서 서버 조회 없이도 모든 기기에서 똑같이 계산됨
+  function dailyQuestionIndexFor(dateStr){
+    const epoch = new Date('2026-01-01T00:00:00');
+    const target = new Date(dateStr + 'T00:00:00');
+    const daysSinceEpoch = Math.floor((target - epoch) / (1000*60*60*24));
+    return ((daysSinceEpoch % DAILY_QUESTION_BANK.length) + DAILY_QUESTION_BANK.length) % DAILY_QUESTION_BANK.length;
+  }
+
   // 코드 새로 줄 때마다 이 값 올림 - 홈 화면 맨 아래에 표시돼서, 최신 버전이 실제로
   // 적용됐는지 앱만 열어봐도 바로 확인할 수 있게 해둠.
-  const APP_VERSION = '2026.07.13-31';
+  const APP_VERSION = '2026.07.14-24';
   function colorKeyOf(name){ return PERSON_COLOR[name] || 'yellow'; }
   
   async function searchLocations(query){
@@ -365,6 +454,12 @@ async function uploadPhotos(photosArray, onProgress) {
     if(item.photo) return [item.photo];
     return [];
   }
+  // 복작방 글 미리보기 텍스트: 예전 글은 제목, 새 글은 본문, 본문도 없이 사진만 있으면
+  // 사진이라고 표시, 아무것도 없으면(이론상 없어야 하지만) 기본 문구 - 검색/내 활동/홈
+  // 피드에서 전부 이 함수로 통일해서 표시가 어긋나지 않게 함
+  function boardPreviewText(item){
+    return item.title || item.body || (getItemPhotos(item).length > 0 ? '📷 사진을 남겼어' : '한마디를 남겼어');
+  }
   function cardPhotosHTML(item){
     const photos = getItemPhotos(item);
     if(photos.length === 0) return '';
@@ -646,6 +741,13 @@ async function uploadPhotos(photosArray, onProgress) {
     if(document.visibilityState !== 'visible') return;
     resumeRetryTimers.forEach(clearTimeout);
     resumeRetryTimers = [];
+
+    // 밤새 화면이 꺼져 있었다가 다음 날 다시 켰을 때, 1분 타이머를 기다리지 않고
+    // 바로 오늘 질문/오늘의 한 장으로 교체되게 함
+    if(identity){
+      watchDailyQuestion();
+      renderDailyPhotoCard();
+    }
 
     // 예전엔 여기서 앱을 열 때마다 CLEAR_ALL_NOTIFICATIONS를 보내서 잠금화면/알림창의
     // 알림을 전부 지웠는데, 이러면 "안 읽음 = 실제로 확인/삭제 안 한 것" 기준과 어긋남
@@ -1301,7 +1403,7 @@ function renderCalendar(){
     if(wishData.length === 0){
       list.innerHTML = wishAuthorFilter === 'all'
         ? '<div class="empty-state"><span class="empty-emoji">💭</span>아직 하고 싶은 일이 없어.<br>버킷리스트를 적어볼까?</div>'
-        : '<div class="empty-state"><span class="empty-emoji">💭</span>해당하는 위시가 없어.</div>';
+        : '<div class="empty-state"><span class="empty-emoji">💭</span>해당하는 게 없어.</div>';
       toggleBtn.classList.add('hidden');
       doneSection.classList.add('hidden');
       tryConsumePendingScroll();
@@ -1311,12 +1413,12 @@ function renderCalendar(){
     const done = wishData.filter(w=>w.done);
 
     list.innerHTML = active.length === 0
-      ? '<div class="empty-state"><span class="empty-emoji">🎉</span>다 완료했어! 새로운 위시를 적어볼까?</div>'
+      ? '<div class="empty-state"><span class="empty-emoji">🎉</span>다 완료했어! 새로운 걸 적어볼까?</div>'
       : active.map(wishCardHTML).join('');
 
     if(done.length > 0){
       toggleBtn.classList.remove('hidden');
-      toggleBtn.textContent = showDoneWishes ? '완료한 위시 숨기기' : `완료한 위시 ${done.length}개 보기`;
+      toggleBtn.textContent = showDoneWishes ? '완료한 것 숨기기' : `완료한 것 ${done.length}개 보기`;
       doneSection.classList.toggle('hidden', !showDoneWishes);
       doneSection.innerHTML = done.map(wishCardHTML).join('');
     } else {
@@ -1394,34 +1496,31 @@ function renderDateLog() {
     const isLiked = identity && likes.includes(identity);
     const likeIcon = pixelHeartSVG(isLiked);
     const commentCount = totalCommentCount(item.comments);
-    return `<div class="wish-card ${item.pinned?'pinned-card':''}" data-item-id="${item.id}">
+    // 복작방은 "가볍게 들락거리는" 게 목적이라, 위시/편지처럼 눌러서 펼치는 방식이 아니라
+    // 작성자·날짜·본문·사진·좋아요/댓글 버튼이 전부 바로 보이는 피드형으로 구성함.
+    // (댓글 목록/입력창만 기존처럼 버튼을 눌러야 펼쳐짐 - 그건 다른 탭들과 동일한 패턴)
+    return `<div class="wish-card board-feed-card ${item.pinned?'pinned-card':''}" data-item-id="${item.id}">
       <div class="wish-content">
-        <div class="post-summary" data-post-toggle="${item.id}">
+        <div class="board-feed-header">
           ${item.pinned ? `<div class="pinned-badge">📌 공지</div>` : ''}
-          <div class="post-summary-title">${escapeHTML(item.title)}</div>
-          <div class="post-summary-meta">${authorTagHTML(item.author)}<span>${dateStr}</span><span class="post-summary-arrow">▾</span></div>
+          <div class="post-summary-meta" style="margin-top:0;">${authorTagHTML(item.author)}<span>${dateStr}</span></div>
+          ${isMine(item) && item.postType !== 'dailyPhoto' ? `<button class="edit-btn" data-edit-board="${item.id}">${pixelEditSVG()}</button>` : ''}
+          ${canDelete(item.author) ? `<button class="del-btn" data-del-board="${item.id}">✕</button>` : ''}
         </div>
-        <div class="post-detail ${openPostDetails.has(item.id) ? '' : 'hidden'}">
-          ${item.body ? `<div class="wish-body">${escapeHTML(item.body)}</div>` : ''}
-          ${cardPhotosHTML(item)}
-          <div class="wish-footer">
-            <div style="display:flex;align-items:center;gap:6px;justify-content:flex-end;width:100%;">
-              ${isMine(item) ? `<button class="edit-btn" data-edit-board="${item.id}">${pixelEditSVG()}</button>` : ''}
-              ${canDelete(item.author) ? `<button class="del-btn" data-del-board="${item.id}">✕</button>` : ''}
-            </div>
+        ${item.title ? `<div class="board-feed-title">${escapeHTML(item.title)}</div>` : ''}
+        ${item.body ? `<div class="wish-body">${escapeHTML(item.body)}</div>` : ''}
+        ${cardPhotosHTML(item)}
+        <div class="reaction-row">
+          <div style="display:flex; gap:10px;">
+            <button class="like-btn ${isLiked ? 'liked' : ''}" data-like-col="board" data-like-id="${item.id}">
+              <span class="heart-icon">${likeIcon}</span> ${likes.length > 0 ? likes.length : ''}
+            </button>
+            <button class="comment-btn" data-toggle-comment="board" data-toggle-id="${item.id}">
+              <span class="chat-icon">${pixelChatSVG()}</span> ${commentCount > 0 ? commentCount : ''}
+            </button>
           </div>
-          <div class="reaction-row">
-            <div style="display:flex; gap:10px;">
-              <button class="like-btn ${isLiked ? 'liked' : ''}" data-like-col="board" data-like-id="${item.id}">
-                <span class="heart-icon">${likeIcon}</span> ${likes.length > 0 ? likes.length : ''}
-              </button>
-              <button class="comment-btn" data-toggle-comment="board" data-toggle-id="${item.id}">
-                <span class="chat-icon">${pixelChatSVG()}</span> ${commentCount > 0 ? commentCount : ''}
-              </button>
-            </div>
-          </div>
-          ${renderCommentsHTML(item, 'board')}
         </div>
+        ${renderCommentsHTML(item, 'board')}
       </div>
     </div>`;
   }
@@ -1430,8 +1529,8 @@ function renderBoard() {
   const boardData = boardAuthorFilter === 'all' ? boards : boards.filter(b => b.author === boardAuthorFilter);
   if(boardData.length === 0){
     list.innerHTML = boardAuthorFilter === 'all'
-      ? '<div class="empty-state"><span class="empty-emoji">📋</span>아직 게시글이 없어.<br>자유롭게 남겨봐!</div>'
-      : '<div class="empty-state"><span class="empty-emoji">📋</span>해당하는 게시글이 없어.</div>';
+      ? '<div class="empty-state"><span class="empty-emoji">📋</span>아직 남긴 한마디가 없어.<br>먼저 가볍게 말을 걸어볼까?</div>'
+      : '<div class="empty-state"><span class="empty-emoji">📋</span>해당하는 한마디가 없어.</div>';
     tryConsumePendingScroll();
     return;
   }
@@ -1589,20 +1688,24 @@ function renderLetters() {
     const items = [];
     schedule.forEach(it=>{
       if(!it.createdAt) return;
-      items.push({ id: it.id, ts: it.createdAt, author: it.author, label:'일정', text: it.title, tab:'schedule' });
+      items.push({ id: it.id, ts: it.createdAt, author: it.author, label:'일정', text: it.title, tab:'schedule', item: null });
     });
     wishes.forEach(it=>{
-      items.push({ id: it.id, ts: it.createdAt || 0, author: it.author, label:'위시', text: it.title, tab:'wish' });
+      items.push({ id: it.id, ts: it.createdAt || 0, author: it.author, label:'하고 싶은 것', text: it.title, tab:'wish', item: it });
     });
     dateLogs.forEach(it=>{
       if(!it.createdAt) return;
-      items.push({ id: it.id, ts: it.createdAt, author: it.author, label:'데이트기록', text: it.title, tab:'datelog' });
+      items.push({ id: it.id, ts: it.createdAt, author: it.author, label:'함께한 날', text: it.title, tab:'datelog', item: it });
     });
-    boards.forEach(it=>{
-      items.push({ id: it.id, ts: it.createdAt || 0, author: it.author, label:'게시판', text: it.title, tab:'board' });
-    });
+    // 복작방은 홈 전용 카드(homeBoardFeedCard)에서 이미 따로 보여주고 있어서,
+    // 여기(최근 활동)에 또 넣으면 같은 글이 홈에 두 번 나타나므로 제외함
     letters.forEach(it=>{
-      items.push({ id: it.id, ts: it.createdAt || 0, author: it.author, label:'편지', text: it.title || it.body, tab:'letter' });
+      const isLocked = !!(it.unlockAt && it.unlockAt > Date.now() && !isMine(it));
+      items.push({
+        id: it.id, ts: it.createdAt || 0, author: it.author, label:'편지',
+        text: isLocked ? '🔒 아직 열리지 않은 편지야' : (it.title || it.body),
+        tab:'letter', item: it, canReact: !isLocked
+      });
     });
     return items.sort((a,b)=> b.ts - a.ts).slice(0, 2);
   }
@@ -1651,6 +1754,69 @@ function renderLetters() {
 
     renderStatusBoard();
 
+    renderDailyPhotoCard();
+
+    const boardFeedCard = document.getElementById('homeBoardFeedCard');
+    if(boardFeedCard){
+      const recentBoards = boards.filter(item => item.postType !== 'dailyPhoto').sort((a,b)=> (b.createdAt||0) - (a.createdAt||0)).slice(0, 3);
+      if(recentBoards.length === 0){
+        boardFeedCard.innerHTML = `<div class="home-next-label">🗨️ 복작방</div><div class="home-next-sub">아직 남긴 한마디가 없어</div>`;
+      } else {
+        boardFeedCard.innerHTML = `
+          <div class="home-next-label">🗨️ 복작방</div>
+          ${recentBoards.map(it => {
+            const likes = it.likes || [];
+            const isLiked = identity && likes.includes(identity);
+            const commentCount = totalCommentCount(it.comments);
+            const snippet = boardPreviewText(it);
+            return `<div class="home-board-feed-item" data-item-target="${it.id}">
+              <span class="home-feed-author color-${colorKeyOf(it.author)}">${it.author||''}</span>
+              <span class="home-feed-text">${escapeHTML((snippet||'').slice(0,30))}</span>
+              <span class="home-board-feed-actions">
+                <button class="like-btn ${isLiked?'liked':''}" data-like-col="board" data-like-id="${it.id}"><span class="heart-icon">${pixelHeartSVG(isLiked)}</span> ${likes.length>0?likes.length:''}</button>
+                <button class="home-board-comment-btn" data-comment-target="${it.id}"><span class="chat-icon">${pixelChatSVG()}</span> ${commentCount>0?commentCount:''}</button>
+              </span>
+            </div>`;
+          }).join('')}
+        `;
+        // 이름/본문 부분을 누르면 복작방 탭의 그 글로 이동
+        boardFeedCard.querySelectorAll('.home-board-feed-item').forEach(el=>{
+          el.addEventListener('click', (e)=>{
+            if(e.target.closest('.like-btn') || e.target.closest('.home-board-comment-btn')) return;
+            navigateToItem('board', el.dataset.itemTarget);
+          });
+        });
+        // 댓글 아이콘을 누르면 그 글로 이동하면서 댓글창까지 바로 열어줌
+        boardFeedCard.querySelectorAll('.home-board-comment-btn').forEach(btn=>{
+          btn.addEventListener('click', (e)=>{
+            e.stopPropagation();
+            const id = btn.dataset.commentTarget;
+            // 작성 중인 내용 때문에 이동이 취소됐다면 아무 상태도 바꾸지 않음
+            const navigated = navigateToItem('board', id);
+            if(!navigated) return;
+
+            // 다시 렌더링돼도 게시물 본문과 댓글창이 계속 열려있도록 기록
+            openPostDetails.add(id);
+            openCommentSections.add(`board-${id}`);
+
+            const card = document.querySelector(`#panel-board [data-item-id="${id}"]`);
+            const detail = card ? card.querySelector('.post-detail') : null;
+            if(detail) detail.classList.remove('hidden');
+
+            const section = card ? card.querySelector('.comment-section') : null;
+            if(section){
+              section.classList.add('active');
+              setTimeout(()=>{
+                const input = document.getElementById(`c-input-board-${id}`);
+                if(input) input.focus();
+              }, 250);
+            }
+          });
+        });
+        // 좋아요 버튼은 main에 이미 등록된 전역 .like-btn 핸들러가 알아서 처리함
+      }
+    }
+
     const feedCard = document.getElementById('homeFeedCard');
     if(feedCard){
       const feed = buildActivityFeed();
@@ -1660,15 +1826,79 @@ function renderLetters() {
         const authorClass = a => `color-${colorKeyOf(a)}`;
         feedCard.innerHTML = `
           <div class="home-next-label">🕓 최근 활동</div>
-          ${feed.map(f => `<div class="home-feed-item" data-tab-target="${f.tab}" data-item-target="${f.id}">
-            <span class="home-feed-author ${authorClass(f.author)}">${f.author||''}</span>
-            <span class="home-feed-text">${f.label} · ${escapeHTML((f.text||'').slice(0,24))}</span>
-            <span class="home-feed-time">${relativeTimeKR(f.ts)}</span>
-          </div>`).join('')}
+          ${feed.map(f => {
+            // 일정은 좋아요·댓글이 없는 항목이라 기존의 단순한 한 줄 표시 그대로 씀
+            if(!f.item || f.canReact === false){
+              return `<div class="home-feed-item" data-tab-target="${f.tab}" data-item-target="${f.id}">
+                <span class="home-feed-author ${authorClass(f.author)}">${f.author||''}</span>
+                <span class="home-feed-text">${f.label} · ${escapeHTML((f.text||'').slice(0,24))}</span>
+                <span class="home-feed-time">${relativeTimeKR(f.ts)}</span>
+              </div>`;
+            }
+            // 하고 싶은 것/함께한 날/편지는 탭을 이동하지 않고 홈에서 바로 좋아요·댓글 가능
+            const col = TAB_TO_COL[f.tab];
+            const likes = f.item.likes || [];
+            const isLiked = identity && likes.includes(identity);
+            const commentCount = totalCommentCount(f.item.comments);
+            return `<div class="home-feed-item-rich" data-tab-target="${f.tab}" data-item-target="${f.id}">
+              <div class="home-feed-rich-top">
+                <span class="home-feed-author ${authorClass(f.author)}">${f.author||''}</span>
+                <span class="home-feed-rich-label">${f.label}</span>
+                <span class="home-feed-time">${relativeTimeKR(f.ts)}</span>
+              </div>
+              <div class="home-feed-rich-text">${escapeHTML((f.text||'').slice(0,30))}</div>
+              <div class="home-feed-rich-actions">
+                <button class="like-btn ${isLiked?'liked':''}" data-like-col="${col}" data-like-id="${f.id}">
+                  <span class="heart-icon">${pixelHeartSVG(isLiked)}</span> ${likes.length>0?likes.length:''}
+                </button>
+                <button class="home-feed-comment-btn" data-comment-tab="${f.tab}" data-comment-target="${f.id}">
+                  <span class="chat-icon">${pixelChatSVG()}</span> ${commentCount>0?commentCount:''}
+                </button>
+              </div>
+            </div>`;
+          }).join('')}
         `;
-        feedCard.querySelectorAll('.home-feed-item').forEach(el=>{
-          el.addEventListener('click', ()=> navigateToItem(el.dataset.tabTarget, el.dataset.itemTarget));
+        // 좋아요/댓글 버튼이 아닌, 카드 나머지 부분을 누르면 해당 탭으로 이동
+        feedCard.querySelectorAll('.home-feed-item, .home-feed-item-rich').forEach(el=>{
+          el.addEventListener('click', (e)=>{
+            if(e.target.closest('.like-btn') || e.target.closest('.home-feed-comment-btn')) return;
+            navigateToItem(el.dataset.tabTarget, el.dataset.itemTarget);
+          });
         });
+        // 댓글 아이콘은 그 탭으로 이동하면서 댓글창까지 바로 열어줌 (복작방 홈 카드와 동일한 패턴)
+        feedCard.querySelectorAll('.home-feed-comment-btn').forEach(btn=>{
+          btn.addEventListener('click', (e)=>{
+            e.stopPropagation();
+            const tab = btn.dataset.commentTab;
+            const id = btn.dataset.commentTarget;
+
+            // 작성 중인 내용 때문에 이동이 취소됐다면 아무 상태도 바꾸지 않음
+            const navigated = navigateToItem(tab, id);
+            if(!navigated) return;
+
+            const col = TAB_TO_COL[tab];
+            if(!col) return;
+
+            // 다시 렌더링돼도 게시물 본문과 댓글창이 계속 열려있도록 기록
+            openPostDetails.add(id);
+            openCommentSections.add(`${col}-${id}`);
+
+            const card = document.querySelector(`#panel-${tab} [data-item-id="${id}"]`);
+            const detail = card ? card.querySelector('.post-detail') : null;
+            if(detail) detail.classList.remove('hidden');
+
+            const section = card ? card.querySelector('.comment-section') : null;
+            if(section){
+              section.classList.add('active');
+              // 댓글 버튼을 눌렀으니 입력창까지 바로 포커스
+              setTimeout(()=>{
+                const input = document.getElementById(`c-input-${col}-${id}`);
+                if(input) input.focus();
+              }, 250);
+            }
+          });
+        });
+        // 좋아요 버튼은 main에 이미 등록된 전역 .like-btn 핸들러가 알아서 처리함
       }
     }
 
@@ -1693,6 +1923,7 @@ function renderLetters() {
     }
   }
 
+  const STATUS_REACTION_OPTIONS = ['💜', 'ㅋㅋㅋ', '👀', '나도!'];
   function renderStatusBoard(){
     const board = document.getElementById('statusBoard');
     if(!board) return;
@@ -1701,33 +1932,104 @@ function renderLetters() {
       const colorKey = colorKeyOf(name);
       const emoji = (p && p.status && p.status.emoji) || '🙂';
       const text = (p && p.status && p.status.text) || '상태 없음';
+      const memo = (p && p.status && p.status.memo) || '';
       const updatedAt = p && p.status && p.status.updatedAt;
       const timeAgo = updatedAt ? relativeTimeKR(updatedAt) : '';
+      const isStale = !!(updatedAt && (Date.now() - updatedAt > 24*60*60*1000)); // 24시간 지난 상태는 흐리게
       const clickable = identity === name;
-      return `<div class="status-card color-${colorKey}" ${clickable ? `data-status-edit="1"` : ''}>
+      const reactions = (p && p.status && p.status.reactions) || {};
+      const reactionEntries = Object.entries(reactions).filter(([,e]) => e);
+      const myReaction = identity && reactions[identity];
+      return `<div class="status-card color-${colorKey} ${isStale ? 'status-stale' : ''}" ${clickable ? `data-status-edit="1"` : ''}>
         <div class="s-name">${name}</div>
         <div class="s-emoji">${escapeHTML(emoji)}</div>
         <div class="s-text">${escapeHTML(text)}</div>
+        ${memo ? `<div class="s-memo">${escapeHTML(memo)}</div>` : ''}
         <div class="s-time">${timeAgo}</div>
+        ${!clickable ? `<div class="s-reaction-row">
+          ${STATUS_REACTION_OPTIONS.map(r => `<button type="button" class="s-reaction-btn ${myReaction===r ? 'active' : ''}" data-react-name="${name}" data-react-emoji="${r}">${r}</button>`).join('')}
+          <button type="button" class="s-reaction-more-btn" data-react-name="${name}" title="다른 이모지로 반응">${myReaction && !STATUS_REACTION_OPTIONS.includes(myReaction) ? escapeHTML(myReaction) : '＋'}</button>
+        </div>` : ''}
+        ${reactionEntries.length > 0 ? `<div class="s-reaction-list">${reactionEntries.map(([n,e]) => `<span class="s-reaction-tag">${escapeHTML(String(e))} ${escapeHTML(n)}</span>`).join(' ')}</div>` : ''}
       </div>`;
     }).join('');
     board.querySelectorAll('[data-status-edit]').forEach(el=>{
       el.addEventListener('click', openStatusModal);
     });
+    // 고정 4개 반응 버튼 - 누르면 바로 저장됨. 같은 걸 다시 누르면 취소, 다른 걸 누르면 교체
+    board.querySelectorAll('.s-reaction-btn').forEach(btn=>{
+      btn.addEventListener('click', (e)=>{
+        e.stopPropagation();
+        saveStatusReaction(btn.dataset.reactName, btn.dataset.reactEmoji, /*toggle=*/true);
+      });
+    });
+    // + 버튼 - 4개 말고 다른 이모지를 직접 고르고 싶을 때만 모달 열기
+    board.querySelectorAll('.s-reaction-more-btn').forEach(btn=>{
+      btn.addEventListener('click', (e)=>{
+        e.stopPropagation();
+        openStatusReactionModal(btn.dataset.reactName);
+      });
+    });
   }
+  // 상태에 반응 저장 (공용) - toggle=true면 같은 반응 다시 눌렀을 때 취소 처리
+  function saveStatusReaction(targetName, emoji, toggle){
+    if(!identity || targetName === identity) return;
+    const current = (profiles[targetName] && profiles[targetName].status && profiles[targetName].status.reactions) || {};
+    const isSame = current[identity] === emoji;
+    const fieldPath = `status.reactions.${identity}`;
+    const update = {};
+    update[fieldPath] = (toggle && isSame) || !emoji ? firebase.firestore.FieldValue.delete() : emoji;
+    db.collection('profiles').doc(targetName).update(update)
+      .catch(err => {
+        console.error('상태 반응 실패', err);
+        alert('반응을 남기지 못했어. 잠시 후 다시 시도해줘.');
+      });
+  }
+  // 고정 4개 말고 다른 이모지로 반응하고 싶을 때 - 기기의 이모지 키보드로 아무거나 직접 입력
+  let reactionTargetName = null;
+  function openStatusReactionModal(targetName){
+    if(!identity || targetName === identity) return;
+    reactionTargetName = targetName;
+    const current = (profiles[targetName] && profiles[targetName].status && profiles[targetName].status.reactions) || {};
+    document.getElementById('statusReactionInput').value = current[identity] || '';
+    document.getElementById('statusReactionModal').classList.remove('hidden');
+    document.getElementById('statusReactionInput').focus();
+  }
+  document.getElementById('statusReactionCancelBtn').addEventListener('click', ()=>{
+    document.getElementById('statusReactionModal').classList.add('hidden');
+  });
+  document.getElementById('statusReactionSaveBtn').addEventListener('click', ()=>{
+    if(!reactionTargetName) return;
+    const emoji = document.getElementById('statusReactionInput').value.trim();
+    saveStatusReaction(reactionTargetName, emoji, /*toggle=*/false);
+    document.getElementById('statusReactionModal').classList.add('hidden');
+  });
+  let selectedStatusEmoji = '';
+  let selectedStatusText = '';
   function openStatusModal(){
     const p = profiles[identity];
-    document.getElementById('statusEmojiInput').value = (p && p.status && p.status.emoji) || '';
-    document.getElementById('statusTextInput').value = (p && p.status && p.status.text) || '';
+    selectedStatusEmoji = (p && p.status && p.status.emoji) || '';
+    selectedStatusText = (p && p.status && p.status.text) || '';
+    document.getElementById('statusMemoInput').value = (p && p.status && p.status.memo) || '';
+    document.querySelectorAll('.status-quick-btn').forEach(btn=>{
+      btn.classList.toggle('active', btn.dataset.text === selectedStatusText && btn.dataset.emoji === selectedStatusEmoji);
+    });
     document.getElementById('statusModal').classList.remove('hidden');
   }
+  document.querySelectorAll('.status-quick-btn').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      selectedStatusEmoji = btn.dataset.emoji;
+      selectedStatusText = btn.dataset.text;
+      document.querySelectorAll('.status-quick-btn').forEach(b=> b.classList.remove('active'));
+      btn.classList.add('active');
+    });
+  });
   document.getElementById('statusCancelBtn').addEventListener('click', ()=>{
     document.getElementById('statusModal').classList.add('hidden');
   });
   document.getElementById('statusClearBtn').addEventListener('click', ()=>{
-    document.getElementById('statusEmojiInput').value = '';
-    document.getElementById('statusTextInput').value = '';
-    document.getElementById('statusTextInput').focus();
+    document.getElementById('statusMemoInput').value = '';
+    document.getElementById('statusMemoInput').focus();
   });
 
   // ---- 게시글 작성 폼의 지우기(X) 버튼 공통 처리 (본문/textarea 제외) ----
@@ -1742,15 +2044,42 @@ function renderLetters() {
   });
   document.getElementById('statusSaveBtn').addEventListener('click', async ()=>{
     if(!identity) return;
-    const emoji = document.getElementById('statusEmojiInput').value.trim();
-    const text = document.getElementById('statusTextInput').value.trim();
+    const memo = document.getElementById('statusMemoInput').value.trim();
+
+    // 상태를 하나도 안 고르고 메모만 쓴 채로 저장하는 걸 막음
+    if(!selectedStatusEmoji || !selectedStatusText){
+      alert('오늘의 상태를 하나 골라줘.');
+      return;
+    }
+
+    const current = (profiles[identity] && profiles[identity].status) || {};
+    const unchanged = current.emoji === selectedStatusEmoji
+      && current.text === selectedStatusText
+      && (current.memo || '') === memo;
+    if(unchanged){
+      // 완전히 같은 내용이면 그냥 닫기만 함 - 안 그러면 updatedAt만 바뀌면서
+      // 다들 "상태를 바꿨어" 알림을 또 받게 됨
+      document.getElementById('statusModal').classList.add('hidden');
+      return;
+    }
+
     try{
-      await db.collection('profiles').doc(identity).set({
+      // dot notation으로 status의 emoji/text/memo/updatedAt만 콕 집어 갱신 -
+      // 그래야 status.reactions(다른 사람들이 남긴 반응)가 안 지워짐... 단, 상태
+      // 자체가 바뀌는 거라면 예전 반응은 새 상태에 안 어울리니 여기서 같이 초기화함
+      await db.collection('profiles').doc(identity).update({
         colorKey: colorKeyOf(identity),
-        status: { emoji, text, updatedAt: Date.now() }
-      }, { merge: true });
-    }catch(e){ console.error('상태 저장 실패', e); }
-    document.getElementById('statusModal').classList.add('hidden');
+        'status.emoji': selectedStatusEmoji,
+        'status.text': selectedStatusText,
+        'status.memo': memo,
+        'status.updatedAt': Date.now(),
+        'status.reactions': {}
+      });
+      document.getElementById('statusModal').classList.add('hidden');
+    }catch(e){
+      console.error('상태 저장 실패', e);
+      alert('상태를 저장하지 못했어. 잠시 후 다시 시도해줘.');
+    }
   });
 
   function getCurrentActiveTab(){
@@ -1763,7 +2092,7 @@ function renderLetters() {
       case 'wish': return document.getElementById('wishTitle').value.trim() !== '' || document.getElementById('wishBody').value.trim() !== '';
       case 'datelog': return document.getElementById('dateLogTitle').value.trim() !== '';
       case 'letter': return document.getElementById('letterBody').value.trim() !== '';
-      case 'board': return document.getElementById('boardTitle').value.trim() !== '' || document.getElementById('boardBody').value.trim() !== '';
+      case 'board': return document.getElementById('boardBody').value.trim() !== '' || pendingBoardPhotos.length > 0;
       default: return false;
     }
   }
@@ -1776,6 +2105,10 @@ function renderLetters() {
       case 'board': resetBoardForm(); break;
     }
   }
+  // "약속"(일정+하고 싶은 것), "추억"(함께한 날+편지) 묶음 - 탭 이름 자체는 그대로 두고
+  // 하단 탭바 표시/강조만 그룹 단위로 처리함 (기존 navigateToItem, 알림, 검색 등은
+  // 실제 탭 이름을 그대로 쓰므로 전혀 안 건드려도 됨)
+  const TAB_GROUP = { schedule: 'promise', wish: 'promise', datelog: 'memories', letter: 'memories', dailyPhotoArchive: 'memories' };
   function activateTab(tabName){
     const panel = document.getElementById('panel-'+tabName);
     if(!panel) return false;
@@ -1809,14 +2142,32 @@ function renderLetters() {
       if(currentTab === 'letter'){
         setLetterLockToggleState(false);
       }
+      // 복작방 탭을 나가면, 아카이브에서 임시로 열어뒀던 과거 사진도 정리
+      // (안 지우면 일반 목록 구독이 갱신될 때마다 계속 다시 끼워넣어져서 안 사라짐)
+      if(currentTab === 'board' && typeof clearOpenedArchivePhoto === 'function'){
+        clearOpenedArchivePhoto();
+      }
     }
     document.querySelectorAll('.tab-panel').forEach(p=>p.classList.remove('active'));
     panel.classList.add('active');
     window.scrollTo(0, 0);
+    // 하단 탭바: "약속"/"추억"처럼 여러 탭을 묶은 그룹 버튼은, 그 그룹에 속한 어떤
+    // 탭이 활성화되어도 계속 눌린 상태로 보이게 함
     document.querySelectorAll('.tab-btn').forEach(b=>{
+      const group = TAB_GROUP[tabName];
+      b.classList.toggle('active', b.dataset.tab === tabName || (!!group && b.dataset.tabGroup === group));
+    });
+    // 패널 안쪽 상단의 서브탭(일정|하고 싶은 것, 함께한 날|편지)도 같이 갱신
+    document.querySelectorAll('.sub-tab-btn').forEach(b=>{
       b.classList.toggle('active', b.dataset.tab === tabName);
     });
-    if(typeof startCollectionWatcher === 'function') startCollectionWatcher(tabName);
+    // 오늘의 한 장 아카이브는 복작방의 최근 100개 제한과 무관하게 전체를 봐야 함.
+    // 네 명만 쓰는 작은 앱이라, 매번 다시 조회하는 게 가장 단순하고 정확함
+    // (한 번 열고 나서 새 사진/교체/삭제가 생겨도 다음 진입 때 바로 반영됨)
+    if(tabName === 'dailyPhotoArchive'){
+      loadDailyPhotoArchive();
+    }
+    if(typeof startCollectionWatcher === 'function') startCollectionWatcher(tabName === 'dailyPhotoArchive' ? 'board' : tabName);
     return true;
   }
   function activateTabFromHash(){
@@ -1832,6 +2183,10 @@ function renderLetters() {
     else activateTab(tab);
   }
   document.querySelectorAll('.tab-btn').forEach(btn=>{
+    btn.addEventListener('click', ()=> activateTab(btn.dataset.tab));
+  });
+  // 패널 안쪽 상단의 서브탭(일정|하고 싶은 것, 함께한 날|편지) 클릭 처리
+  document.querySelectorAll('.sub-tab-btn').forEach(btn=>{
     btn.addEventListener('click', ()=> activateTab(btn.dataset.tab));
   });
   document.getElementById('homeThrowbackCard').addEventListener('click', ()=>{
@@ -1976,7 +2331,19 @@ function renderLetters() {
       await firebase.auth().signOut();
     }
   }
-  document.getElementById('identityChip').addEventListener('click', async ()=>{
+  document.getElementById('identityChip').addEventListener('click', ()=>{
+    document.getElementById('profileMenuTitle').textContent = identity ? `나는 ${identity}` : '나는 ...';
+    document.getElementById('profileMenuModal').classList.remove('hidden');
+  });
+  document.getElementById('profileMenuCancelBtn').addEventListener('click', ()=>{
+    document.getElementById('profileMenuModal').classList.add('hidden');
+  });
+  document.getElementById('profileMenuActivityBtn').addEventListener('click', ()=>{
+    document.getElementById('profileMenuModal').classList.add('hidden');
+    openMyActivityOverlay();
+  });
+  document.getElementById('profileMenuLogoutBtn').addEventListener('click', async ()=>{
+    document.getElementById('profileMenuModal').classList.add('hidden');
     if(!confirm('로그아웃할까?')) return;
     await logoutCurrentUser();
   });
@@ -2285,7 +2652,7 @@ function renderLetters() {
       const wishItem = wishes.find(s => s.id === checkId);
       if(!wishItem) return;
       const willBeDone = !wishItem.done;
-      if(willBeDone && !confirm('이 위시를 완료로 표시할까?')) return;
+      if(willBeDone && !confirm('완료로 표시할까?')) return;
       db.collection('wishlist').doc(checkId).update({ done: willBeDone }).catch(err=>console.error(err));
     }
   }
@@ -2533,7 +2900,7 @@ function renderLetters() {
   let boardPinEnabled = false;
   setupPhotoPicker('boardPhotoInput','boardPhotoBtn','boardPhotoPreviewWrap', ()=>pendingBoardPhotos, (v)=>{ pendingBoardPhotos = v; });
   setupAuthorFilterRow('boardFilterRow', ()=>boardAuthorFilter, (v)=>{ boardAuthorFilter = v; }, renderBoard);
-  setupDraftAutosave('draft_board', ['boardTitle', 'boardBody']);
+  setupDraftAutosave('draft_board', ['boardBody']);
   document.getElementById('boardPinToggle').addEventListener('click', ()=>{
     boardPinEnabled = !boardPinEnabled;
     document.getElementById('boardPinToggle').classList.toggle('active', boardPinEnabled);
@@ -2541,7 +2908,6 @@ function renderLetters() {
 
   function startEditBoard(item){
     editingBoardId = item.id;
-    document.getElementById('boardTitle').value = item.title || '';
     document.getElementById('boardBody').value = item.body || '';
     if(document.getElementById('boardBody')._autoGrowResize) document.getElementById('boardBody')._autoGrowResize();
     pendingBoardPhotos = getItemPhotos(item).slice();
@@ -2555,7 +2921,6 @@ function renderLetters() {
   }
   function resetBoardForm(){
     editingBoardId = null;
-    document.getElementById('boardTitle').value = '';
     document.getElementById('boardBody').value = '';
     if(document.getElementById('boardBody')._autoGrowResize) document.getElementById('boardBody')._autoGrowResize();
     revokePendingPhotoUrls(pendingBoardPhotos);
@@ -2563,16 +2928,17 @@ function renderLetters() {
     renderPhotoPreviewGrid('boardPhotoPreviewWrap', ()=>pendingBoardPhotos, (v)=>{ pendingBoardPhotos = v; });
     boardPinEnabled = false;
     document.getElementById('boardPinToggle').classList.remove('active');
-    document.getElementById('boardAddBtn').textContent = '게시하기';
+    document.getElementById('boardAddBtn').textContent = '남기기';
     document.getElementById('boardCancelBtn').classList.add('hidden');
     clearDraftAutosave('draft_board');
   }
   document.getElementById('boardCancelBtn').addEventListener('click', resetBoardForm);
 
   document.getElementById('boardAddBtn').addEventListener('click', async () => {
-    const title = document.getElementById('boardTitle').value.trim();
-    if (!title) return;
-    const data = { title, body: document.getElementById('boardBody').value.trim(), pinned: boardPinEnabled };
+    const body = document.getElementById('boardBody').value.trim();
+    // 제목 없이 한마디만 남기는 구조라, 본문 텍스트나 사진 중 하나라도 있어야 등록 가능
+    if (!body && pendingBoardPhotos.length === 0) return;
+    const data = { body, pinned: boardPinEnabled };
     if(!editingBoardId){ data.likes = []; data.comments = []; }
     await saveItem('board', !!editingBoardId, editingBoardId, data, pendingBoardPhotos, resetBoardForm);
   });
@@ -2812,6 +3178,7 @@ function startWatchers(){
     watchAnniversaries();
     watchProfiles();
     watchNotifications();
+    watchDailyQuestion();
 
     // [나머지 3개] 앱을 처음 켤 때 다 같이 무겁게 불러오지 않고,
     // 그 탭을 처음 열 때 그때 불러오도록 지연시킴 (아래 startCollectionWatcher 참고).
@@ -2836,6 +3203,527 @@ function startWatchers(){
       }, err=>console.error('기념일 구독 실패', err))
     );
   }
+
+  // ---- 오늘의 질문 ----
+  let todayQuestionData = null;
+  let dailyQuestionUnsubscribe = null;
+  let dailyQuestionWatchedDate = null;
+  let dailyQuestionRolloverTimer = null;
+  // 오늘 날짜 문서가 아직 없으면 만듦 - 트랜잭션으로 처리해서, 가족 여러 명이 거의 동시에
+  // 앱을 처음 열어도 서로 덮어쓰지 않고 안전하게 딱 하나만 만들어짐
+  async function ensureTodayQuestion(dateStr){
+    dateStr = dateStr || localDateStr();
+    const ref = db.collection('dailyQuestions').doc(dateStr);
+    try{
+      await db.runTransaction(async (tx) => {
+        const snap = await tx.get(ref);
+        if(snap.exists) return;
+        const idx = dailyQuestionIndexFor(dateStr);
+        const bankEntry = DAILY_QUESTION_BANK[idx];
+        // 뱅크 항목이 문자열이면 한 줄 답변형, poll()로 만든 객체면 투표형
+        const docData = (bankEntry && typeof bankEntry === 'object' && bankEntry.type === 'poll')
+          ? { questionId: idx, question: bankEntry.question, type: 'poll', options: bankEntry.options, answers: {} }
+          : { questionId: idx, question: bankEntry, answers: {} };
+        tx.set(ref, docData);
+      });
+    }catch(e){ console.error('오늘의 질문 준비 실패', e); }
+  }
+  function watchDailyQuestion(){
+    const dateStr = localDateStr();
+    if(dailyQuestionWatchedDate === dateStr) return; // 이미 오늘 날짜를 구독 중이면 그대로 둠
+    if(dailyQuestionUnsubscribe){ dailyQuestionUnsubscribe(); dailyQuestionUnsubscribe = null; }
+    dailyQuestionWatchedDate = dateStr;
+
+    // 날짜가 바뀌었을 때 기존 입력칸을 먼저 제거함 - 안 그러면 어제 답변이나
+    // 입력하던 값이 오늘 질문 자리에 잠깐이라도 그대로 보일 수 있음
+    todayQuestionData = null;
+    renderDailyQuestionCard();
+
+    ensureTodayQuestion(dateStr);
+    dailyQuestionUnsubscribe = db.collection('dailyQuestions').doc(dateStr).onSnapshot(snap=>{
+      todayQuestionData = snap.exists ? snap.data() : null;
+      renderDailyQuestionCard();
+    }, err=>console.error('오늘의 질문 구독 실패', err));
+
+    // 앱을 안 끄고 자정을 넘기면 계속 어제 질문을 구독하고 있게 되므로,
+    // 1분마다 날짜가 바뀌었는지 확인해서 바뀌었으면 자동으로 오늘 질문으로 갈아탐
+    if(!dailyQuestionRolloverTimer){
+      dailyQuestionRolloverTimer = setInterval(()=>{
+        if(identity){
+          watchDailyQuestion();
+          renderDailyPhotoCard();
+        }
+      }, 60 * 1000);
+    }
+  }
+  function stopDailyQuestionWatch(){
+    if(dailyQuestionUnsubscribe){ dailyQuestionUnsubscribe(); dailyQuestionUnsubscribe = null; }
+    dailyQuestionWatchedDate = null;
+    if(dailyQuestionRolloverTimer){ clearInterval(dailyQuestionRolloverTimer); dailyQuestionRolloverTimer = null; }
+  }
+  // 지난 질문은 실시간으로 계속 볼 필요가 없어서, 열 때 한 번만 조회함(지속 구독 안 함)
+  let dailyQuestionArchiveExpanded = new Set();
+  async function openDailyQuestionArchive(){
+    const overlay = document.getElementById('dailyQuestionArchiveOverlay');
+    const results = document.getElementById('dailyQuestionArchiveResults');
+    overlay.classList.remove('hidden');
+    results.innerHTML = '<div class="empty-state">불러오는 중이야...</div>';
+    try{
+      // 가족 4명용 소규모 앱이라 전체 기간을 그냥 다 불러옴 (개수 제한 없음)
+      const snap = await db.collection('dailyQuestions').orderBy(firebase.firestore.FieldPath.documentId(), 'desc').get();
+      const items = [];
+      snap.forEach(doc => {
+        // 오늘 날짜는 홈 카드에서 이미 보고 있으니 아카이브에서는 그 전날들만 보여줌
+        if(doc.id === localDateStr()) return;
+        const data = doc.data();
+        items.push({ date: doc.id, question: data.question || '', answers: data.answers || {} });
+      });
+      if(items.length === 0){
+        results.innerHTML = '<div class="empty-state"><span class="empty-emoji">💭</span>아직 쌓인 지난 질문이 없어.</div>';
+        return;
+      }
+      // 월별로 묶어서 표시 (YYYY-MM 기준)
+      const groups = {};
+      items.forEach(it => {
+        const monthKey = it.date.slice(0, 7); // "2026-07"
+        (groups[monthKey] = groups[monthKey] || []).push(it);
+      });
+      const monthKeys = Object.keys(groups).sort((a,b)=> b.localeCompare(a));
+      results.innerHTML = monthKeys.map(monthKey => {
+        const [y, m] = monthKey.split('-');
+        const rows = groups[monthKey].map(it => {
+          const day = Number(it.date.slice(8, 10));
+          const isOpen = dailyQuestionArchiveExpanded.has(it.date);
+          const answersHTML = ALL_NAMES.map(name => {
+            const a = it.answers[name];
+            return `<div class="daily-q-archive-answer-row">
+              <span class="daily-q-archive-answer-name color-${colorKeyOf(name)}">${name}</span>
+              <span class="daily-q-archive-answer-text ${a ? '' : 'daily-q-answer-empty'}">${a ? escapeHTML(a.text) : '답하지 않았어'}</span>
+            </div>`;
+          }).join('');
+          return `<div class="daily-q-archive-row" data-archive-date="${it.date}">
+            <span class="daily-q-archive-day">${day}일</span>
+            <span class="daily-q-archive-question">${escapeHTML(it.question)}</span>
+          </div>
+          <div class="daily-q-archive-answers ${isOpen ? '' : 'hidden'}" data-archive-answers="${it.date}">${answersHTML}</div>`;
+        }).join('');
+        return `<div class="daily-q-archive-month-label">${y}년 ${Number(m)}월</div>${rows}`;
+      }).join('');
+      // 질문 행을 누르면 그날 네 명의 답변이 펼쳐짐 (다시 누르면 접힘)
+      results.querySelectorAll('[data-archive-date]').forEach(row=>{
+        row.addEventListener('click', ()=>{
+          const date = row.dataset.archiveDate;
+          const answersEl = results.querySelector(`[data-archive-answers="${date}"]`);
+          if(!answersEl) return;
+          const isOpen = dailyQuestionArchiveExpanded.has(date);
+          if(isOpen){ dailyQuestionArchiveExpanded.delete(date); answersEl.classList.add('hidden'); }
+          else { dailyQuestionArchiveExpanded.add(date); answersEl.classList.remove('hidden'); }
+        });
+      });
+    }catch(e){
+      console.error('지난 질문 불러오기 실패', e);
+      results.innerHTML = '<div class="empty-state">불러오지 못했어. 잠시 후 다시 시도해줘.</div>';
+    }
+  }
+  document.getElementById('dailyQuestionArchiveCloseBtn').addEventListener('click', ()=>{
+    document.getElementById('dailyQuestionArchiveOverlay').classList.add('hidden');
+  });
+
+  function renderDailyQuestionCard(){
+    const card = document.getElementById('dailyQuestionCard');
+    if(!card) return;
+    if(!todayQuestionData){
+      card.innerHTML = `<div class="home-next-label">💭 오늘의 질문</div><div class="home-next-sub">질문을 불러오는 중이야...</div>`;
+      return;
+    }
+    const answers = todayQuestionData.answers || {};
+    // type이 없는 예전 질문 문서는 텍스트형으로 취급 (마이그레이션 불필요)
+    const questionType = todayQuestionData.type || 'text';
+
+    if(questionType === 'poll'){
+      const options = todayQuestionData.options || [];
+      const myChoice = answers[identity] ? answers[identity].text : null;
+      card.innerHTML = `
+        <div class="home-next-label">💭 오늘의 질문</div>
+        <div class="daily-q-text">${escapeHTML(todayQuestionData.question || '')}</div>
+        <div class="daily-q-poll-options">
+          ${options.map((opt, idx) => {
+            const voters = ALL_NAMES.filter(name => answers[name] && answers[name].text === opt);
+            const isMine = myChoice === opt;
+            return `<button type="button" class="daily-q-poll-btn ${isMine ? 'active' : ''}" data-poll-idx="${idx}" data-poll-text="${escapeHTML(opt)}">
+              <span class="daily-q-poll-btn-text">${escapeHTML(opt)}</span>
+              ${voters.length > 0 ? `<span class="daily-q-poll-voters">${voters.map(n => escapeHTML(n)).join(' · ')}</span>` : ''}
+            </button>`;
+          }).join('')}
+        </div>
+        <button type="button" class="daily-q-archive-link" id="dailyQuestionArchiveBtn">💭 지난 질문 모아보기</button>
+      `;
+      card.querySelectorAll('.daily-q-poll-btn').forEach(btn=>{
+        btn.addEventListener('click', ()=> submitDailyQuestionPollAnswer(Number(btn.dataset.pollIdx), btn.dataset.pollText));
+      });
+      const archiveBtn = document.getElementById('dailyQuestionArchiveBtn');
+      if(archiveBtn) archiveBtn.addEventListener('click', openDailyQuestionArchive);
+      return;
+    }
+
+    // 다른 사람 답변이 도착해서 다시 그려질 때, 내가 아직 저장 안 하고 입력 중이던
+    // 내용까지 같이 날아가지 않도록 미리 기억해뒀다가 다시 그린 뒤 복원함
+    const prevInput = document.getElementById('dailyQuestionInput');
+    const wasFocused = prevInput === document.activeElement;
+    const prevTyped = prevInput ? prevInput.value : null;
+    const prevSelStart = prevInput ? prevInput.selectionStart : null;
+    const prevSelEnd = prevInput ? prevInput.selectionEnd : null;
+    const savedMine = (answers[identity] && answers[identity].text) || '';
+
+    card.innerHTML = `
+      <div class="home-next-label">💭 오늘의 질문</div>
+      <div class="daily-q-text">${escapeHTML(todayQuestionData.question || '')}</div>
+      <div class="daily-q-answers">
+        ${ALL_NAMES.map(name => {
+          if(name === identity){
+            const mine = answers[name];
+            // 아직 저장 안 한 채로 타이핑 중이던 값이 있으면(저장된 값과 다르면) 그걸 우선 보여줌
+            const valueToShow = (prevTyped !== null && prevTyped !== savedMine) ? prevTyped : (mine ? mine.text : '');
+            return `<div class="daily-q-my-row">
+              <input type="text" id="dailyQuestionInput" maxlength="60" placeholder="답변을 남겨봐" value="${escapeHTML(valueToShow)}">
+              <button type="button" id="dailyQuestionSubmitBtn">${mine ? '수정' : '답하기'}</button>
+            </div>`;
+          }
+          const a = answers[name];
+          return `<div class="daily-q-row">
+            <span class="daily-q-name color-${colorKeyOf(name)}">${name}</span>
+            <span class="daily-q-answer ${a ? '' : 'daily-q-answer-empty'}">${a ? escapeHTML(a.text) : '아직 답하지 않았어'}</span>
+          </div>`;
+        }).join('')}
+      </div>
+      <button type="button" class="daily-q-archive-link" id="dailyQuestionArchiveBtn">💭 지난 질문 모아보기</button>
+    `;
+    const submitBtn = document.getElementById('dailyQuestionSubmitBtn');
+    if(submitBtn){
+      submitBtn.addEventListener('click', submitDailyQuestionAnswer);
+    }
+    const input = document.getElementById('dailyQuestionInput');
+    if(input){
+      input.addEventListener('keydown', (e)=>{ if(e.key === 'Enter') submitDailyQuestionAnswer(); });
+      if(wasFocused){
+        input.focus();
+        if(prevSelStart !== null) input.setSelectionRange(prevSelStart, prevSelEnd);
+      }
+    }
+    const archiveBtn = document.getElementById('dailyQuestionArchiveBtn');
+    if(archiveBtn) archiveBtn.addEventListener('click', openDailyQuestionArchive);
+  }
+  function submitDailyQuestionPollAnswer(optionIndex, optionText){
+    if(!identity) return;
+    const dateStr = localDateStr();
+    // 질문을 보고 있는 사이 날짜가 바뀌었다면, 어제 질문에 잘못 저장하지 않도록 멈춤
+    if(dailyQuestionWatchedDate !== dateStr){
+      watchDailyQuestion();
+      alert('날짜가 바뀌어서 오늘의 질문을 새로 불러왔어. 다시 골라줘!');
+      return;
+    }
+    const fieldPath = `answers.${identity}`;
+    db.collection('dailyQuestions').doc(dateStr).update({
+      [fieldPath]: { text: optionText, optionIndex, updatedAt: Date.now() }
+    }).catch(err => {
+      console.error('오늘의 질문 투표 저장 실패', err);
+      alert('답변을 저장하지 못했어. 잠시 후 다시 시도해줘.');
+    });
+  }
+  function submitDailyQuestionAnswer(){
+    if(!identity) return;
+    const dateStr = localDateStr();
+
+    // 질문을 보고 있는 사이 날짜가 바뀌었다면, 어제 질문의 답을 오늘 문서에
+    // 잘못 저장하지 않도록 멈추고 오늘 질문으로 다시 불러옴
+    if(dailyQuestionWatchedDate !== dateStr){
+      watchDailyQuestion();
+      alert('날짜가 바뀌어서 오늘의 질문을 새로 불러왔어. 새 질문에 답해줘!');
+      return;
+    }
+
+    const input = document.getElementById('dailyQuestionInput');
+    if(!input) return;
+    const text = input.value.trim();
+    if(!text) return;
+    const fieldPath = `answers.${identity}`;
+    db.collection('dailyQuestions').doc(dateStr).update({ [fieldPath]: { text, updatedAt: Date.now() } })
+      .catch(err => {
+        console.error('오늘의 질문 답변 저장 실패', err);
+        alert('답변을 저장하지 못했어. 잠시 후 다시 시도해줘.');
+      });
+  }
+
+  // ---- 오늘의 한 장 ----
+  // board 컬렉션을 그대로 재사용함(postType:'dailyPhoto'로만 구분) - 그래서 사진 업로드,
+  // 좋아요, 댓글, 답글, 알림 코드를 새로 안 만들어도 다 그대로 작동함.
+  // 문서 ID를 "daily_이름_날짜"로 고정해서, 하루에 한 장만 남게(다시 올리면 그 문서를 덮어씀).
+  let pendingDailyPhotoPhotos = [];
+  function dailyPhotoDocId(name, dateStr){
+    return `daily_${colorKeyOf(name)}_${dateStr}`;
+  }
+  // ---- 오늘의 한 장 모아보기 (추억 탭 서브탭) ----
+  // boards 배열은 복작방 최근 100개 제한을 같이 쓰기 때문에, 오래 쓰다 보면 오래된
+  // 오늘의 한 장이 그 100개 밖으로 밀려나 아카이브에서 사라질 수 있음 - 그래서 별도로
+  // 전체를 한 번만 조회해서 씀 (실시간 구독은 아님 - 지난 기록 보는 용도라 필요 없음)
+  let dailyPhotoArchiveFilter = 'all';
+  let dailyPhotoArchiveItems = [];
+  let dailyPhotoArchiveLoaded = false;
+  async function loadDailyPhotoArchive(){
+    const list = document.getElementById('dailyPhotoArchiveList');
+    if(!list) return;
+    list.innerHTML = '<div class="empty-state">사진을 불러오는 중이야...</div>';
+    try{
+      const snap = await db.collection('board').where('postType', '==', 'dailyPhoto').get();
+      dailyPhotoArchiveItems = snap.docs
+        .map(doc => ({ id: doc.id, ...doc.data() }))
+        .filter(it => getItemPhotos(it).length > 0)
+        .sort((a,b) => String(b.date||'').localeCompare(String(a.date||'')));
+      dailyPhotoArchiveLoaded = true;
+      renderDailyPhotoArchive();
+    }catch(e){
+      console.error('오늘의 한 장 아카이브 불러오기 실패', e);
+      list.innerHTML = '<div class="empty-state">사진을 불러오지 못했어. 잠시 후 다시 시도해줘.</div>';
+    }
+  }
+  function dailyPhotoArchiveThumbHTML(item){
+    const photo = getItemPhotos(item)[0];
+    // createdAt이 아니라 date 필드를 씀 - 사진을 교체해도 date는 원래 날짜 그대로 유지되기 때문
+    const dt = new Date((item.date || localDateStr()) + 'T00:00:00');
+    const dateStr = `${dt.getMonth()+1}.${dt.getDate()}`;
+    return `<div class="dp-archive-thumb" data-photo-post-id="${item.id}">
+      <img src="${photo}" loading="lazy">
+      <span class="dp-archive-thumb-name color-${colorKeyOf(item.author)}">${item.author||''}</span>
+      <span class="dp-archive-thumb-date">${dateStr}</span>
+    </div>`;
+  }
+  function renderDailyPhotoArchive(){
+    const list = document.getElementById('dailyPhotoArchiveList');
+    if(!list) return;
+    if(!dailyPhotoArchiveLoaded) return; // 아직 조회 전이면(로딩 문구가 떠있는 채) 여기서는 아무것도 안 함
+    const filtered = dailyPhotoArchiveFilter === 'all'
+      ? dailyPhotoArchiveItems
+      : dailyPhotoArchiveItems.filter(b => b.author === dailyPhotoArchiveFilter);
+    if(filtered.length === 0){
+      list.innerHTML = '<div class="empty-state"><span class="empty-emoji">📸</span>아직 쌓인 오늘의 한 장이 없어.</div>';
+      return;
+    }
+    // 이번 달/지난달 구분 없이 전부 YYYY-MM 기준으로 균일하게 묶어서, 모든 달이
+    // 예외 없이 3열 격자로 표시되게 함 (date 필드 기준 - createdAt이 아님)
+    const groups = {};
+    filtered.forEach(item => {
+      const monthKey = (item.date || '').slice(0, 7) || '기타';
+      (groups[monthKey] = groups[monthKey] || []).push(item);
+    });
+    const monthKeys = Object.keys(groups).sort((a,b)=> b.localeCompare(a));
+    list.innerHTML = monthKeys.map(monthKey => {
+      const [y, m] = monthKey.split('-');
+      const label = (y && m) ? `${y}년 ${Number(m)}월` : '날짜 미상';
+      return `<div class="dp-archive-month-label">${label}</div>
+        <div class="dp-archive-grid">${groups[monthKey].map(dailyPhotoArchiveThumbHTML).join('')}</div>`;
+    }).join('');
+    // 사진을 누르면 복작방의 원본 게시글로 이동해서 댓글·좋아요·반응까지 확인 가능
+    list.querySelectorAll('[data-photo-post-id]').forEach(el=>{
+      el.addEventListener('click', ()=> openDailyPhotoArchivePost(el.dataset.photoPostId));
+    });
+  }
+  setupAuthorFilterRow('dailyPhotoArchiveFilterRow', ()=>dailyPhotoArchiveFilter, (v)=>{ dailyPhotoArchiveFilter = v; }, renderDailyPhotoArchive);
+
+  function upsertBoardItem(item){
+    const index = boards.findIndex(b => b.id === item.id);
+    if(index >= 0) boards[index] = item;
+    else boards.push(item);
+  }
+  function removeBoardItem(id){
+    const index = boards.findIndex(b => b.id === id);
+    if(index >= 0) boards.splice(index, 1);
+  }
+  // 아카이브의 사진은 최근 100개(boards) 제한 밖에 있을 수 있어서, navigateToItem()이
+  // 찾지 못해 "불러오지 못했다"는 안내가 뜰 수 있음 - 열기 전에 boards에 임시로 넣어주고,
+  // 보는 동안 좋아요·댓글이 계속 갱신되도록 그 문서만 따로 실시간 구독함.
+  // openedArchivePhotoId는 "내가 임시로 끼워넣은 것"만 표시함 - 원래 최근 100개
+  // 안에 있던 글이면 임시가 아니므로 여기 기록하지 않고, 나중에 지우지도 않음.
+  let openedArchivePhotoId = null;
+  let openedArchivePhotoUnsubscribe = null;
+  function clearOpenedArchivePhoto(){
+    if(openedArchivePhotoUnsubscribe){
+      openedArchivePhotoUnsubscribe();
+      openedArchivePhotoUnsubscribe = null;
+    }
+    if(openedArchivePhotoId){
+      removeBoardItem(openedArchivePhotoId);
+      openedArchivePhotoId = null;
+    }
+  }
+  function openDailyPhotoArchivePost(id){
+    const cachedItem = dailyPhotoArchiveItems.find(item => item.id === id);
+    if(!cachedItem) return;
+
+    // 이전에 임시로 열어뒀던 다른 과거 사진이 있으면 먼저 정리 (연달아 여러 개 봐도 안 쌓이게)
+    clearOpenedArchivePhoto();
+
+    // 이미 최근 100개 안에 있는 글이면 "임시"가 아니므로, 나중에 지울 대상으로 표시하지 않음
+    const alreadyInRecentBoards = boards.some(b => b.id === id);
+    upsertBoardItem(cachedItem);
+    renderBoard(); // navigateToItem이 카드를 찾으려면 먼저 DOM에 존재해야 함
+
+    const navigated = navigateToItem('board', id);
+    if(!navigated){
+      // 작성 중인 내용 때문에 이동이 취소됐다면, 임시로 넣었던 것도 그대로 되돌림
+      if(!alreadyInRecentBoards){ removeBoardItem(id); renderBoard(); }
+      return;
+    }
+    if(!alreadyInRecentBoards) openedArchivePhotoId = id;
+
+    openedArchivePhotoUnsubscribe = db.collection('board').doc(id).onSnapshot(snap=>{
+      if(!snap.exists){
+        // 보는 도중에 삭제된 경우 - 화면에서도 지움
+        removeBoardItem(id);
+        dailyPhotoArchiveItems = dailyPhotoArchiveItems.filter(item => item.id !== id);
+        if(openedArchivePhotoId === id) clearOpenedArchivePhoto();
+        if(getCurrentActiveTab() === 'board') renderBoard();
+        return;
+      }
+      const updatedItem = { id: snap.id, ...snap.data() };
+      upsertBoardItem(updatedItem);
+      const archiveIndex = dailyPhotoArchiveItems.findIndex(item => item.id === id);
+      if(archiveIndex >= 0) dailyPhotoArchiveItems[archiveIndex] = updatedItem;
+      if(getCurrentActiveTab() === 'board') renderBoard();
+    }, err => console.error('과거 오늘의 한 장 구독 실패', err));
+  }
+
+  function renderDailyPhotoCard(){
+    const card = document.getElementById('dailyPhotoCard');
+    if(!card) return;
+    const dateStr = localDateStr();
+    card.innerHTML = `
+      <div class="home-next-label">📸 오늘의 한 장</div>
+      <div class="daily-photo-grid">
+        ${ALL_NAMES.map(name => {
+          const post = boards.find(b => b.postType === 'dailyPhoto' && b.author === name && b.date === dateStr);
+          const photo = post ? getItemPhotos(post)[0] : null;
+          const isMine = identity === name;
+          if(photo){
+            return `<div class="daily-photo-cell" data-photo-post-id="${post.id}">
+              <img src="${photo}" loading="lazy">
+              <span class="daily-photo-name color-${colorKeyOf(name)}">${name}</span>
+              ${isMine ? `<button type="button" class="daily-photo-replace-btn" data-photo-replace-id="${post.id}">교체</button>` : ''}
+            </div>`;
+          }
+          return `<div class="daily-photo-cell daily-photo-empty" ${isMine ? 'data-photo-upload="1"' : ''}>
+            <span class="daily-photo-empty-text">${escapeHTML(name)}의 오늘은<br>아직 비어 있어</span>
+          </div>`;
+        }).join('')}
+      </div>
+    `;
+    // 사진 자체를 누르면(내 것/남의 것 상관없이) 복작방의 그 게시글로 이동해서 댓글·좋아요 확인
+    card.querySelectorAll('[data-photo-post-id]').forEach(el=>{
+      el.addEventListener('click', (e)=>{
+        if(e.target.closest('[data-photo-replace-id]')) return; // 교체 버튼 클릭이면 아래에서 따로 처리
+        navigateToItem('board', el.dataset.photoPostId);
+      });
+    });
+    // 내 사진의 "교체" 버튼은 전용 교체 모달을 염 (일반 복작방 수정과 분리 - 한 장 제한,
+    // 공지 설정 불가, 좋아요·댓글 보존을 확실히 지키기 위함)
+    card.querySelectorAll('[data-photo-replace-id]').forEach(btn=>{
+      btn.addEventListener('click', (e)=>{
+        e.stopPropagation();
+        const post = boards.find(b => b.id === btn.dataset.photoReplaceId);
+        if(post) openDailyPhotoModal(post);
+      });
+    });
+    const uploadCell = card.querySelector('[data-photo-upload]');
+    if(uploadCell) uploadCell.addEventListener('click', ()=> openDailyPhotoModal(null));
+  }
+  // null이면 오늘 처음 올리는 것, 기존 게시물을 넘기면 그 사진을 교체하는 모드
+  let dailyPhotoEditingPost = null;
+  function openDailyPhotoModal(existingPost){
+    if(!identity) return;
+    dailyPhotoEditingPost = existingPost || null;
+    pendingDailyPhotoPhotos = existingPost ? getItemPhotos(existingPost).slice() : [];
+    document.getElementById('dailyPhotoCaptionInput').value = existingPost ? (existingPost.body || '') : '';
+    document.getElementById('dailyPhotoSaveBtn').textContent = existingPost ? '교체하기' : '올리기';
+    renderPhotoPreviewGrid('dailyPhotoPreviewWrap', ()=>pendingDailyPhotoPhotos, (v)=>{ pendingDailyPhotoPhotos = v; });
+    document.getElementById('dailyPhotoModal').classList.remove('hidden');
+  }
+  function closeDailyPhotoModal(){
+    revokePendingPhotoUrls(pendingDailyPhotoPhotos);
+    pendingDailyPhotoPhotos = [];
+    dailyPhotoEditingPost = null;
+    document.getElementById('dailyPhotoPickInput').value = '';
+    document.getElementById('dailyPhotoCaptionInput').value = '';
+    renderPhotoPreviewGrid('dailyPhotoPreviewWrap', ()=>pendingDailyPhotoPhotos, (v)=>{ pendingDailyPhotoPhotos = v; });
+    document.getElementById('dailyPhotoModal').classList.add('hidden');
+  }
+  setupPhotoPicker('dailyPhotoPickInput', 'dailyPhotoPickBtn', 'dailyPhotoPreviewWrap',
+    () => pendingDailyPhotoPhotos,
+    (photos) => {
+      // 한 장만 유지 (제일 최근에 고른 사진) - 그 전에 고르고 버려지는 사진의 임시 URL은 정리
+      const keptPhotos = photos.slice(-1);
+      const discardedPhotos = photos.slice(0, -1);
+      revokePendingPhotoUrls(discardedPhotos);
+      pendingDailyPhotoPhotos = keptPhotos;
+      renderPhotoPreviewGrid('dailyPhotoPreviewWrap', ()=>pendingDailyPhotoPhotos, (v)=>{ pendingDailyPhotoPhotos = v; });
+    }
+  );
+  document.getElementById('dailyPhotoCancelBtn').addEventListener('click', closeDailyPhotoModal);
+  document.getElementById('dailyPhotoSaveBtn').addEventListener('click', async ()=>{
+    if(!identity) return;
+    if(pendingDailyPhotoPhotos.length === 0){ alert('사진을 먼저 골라줘.'); return; }
+
+    const isReplacing = !!dailyPhotoEditingPost;
+    const dateStr = localDateStr();
+
+    // 교체 모달을 열어둔 채로 자정을 넘긴 경우 - 어제 게시물에 오늘 사진이 잘못 합쳐지는 것 방지
+    if(isReplacing && dailyPhotoEditingPost.date !== dateStr){
+      alert('날짜가 바뀌었어. 오늘의 한 장에서 다시 사진을 골라줘!');
+      closeDailyPhotoModal();
+      renderDailyPhotoCard();
+      return;
+    }
+    if(isReplacing && !confirm('오늘의 한 장을 교체할까? (좋아요·댓글은 그대로 남아)')) return;
+
+    const saveBtn = document.getElementById('dailyPhotoSaveBtn');
+    if(saveBtn.disabled) return; // 빠르게 두 번 눌러 중복 업로드되는 것 방지
+    saveBtn.disabled = true;
+
+    const caption = document.getElementById('dailyPhotoCaptionInput').value.trim();
+    const docId = isReplacing ? dailyPhotoEditingPost.id : dailyPhotoDocId(identity, dateStr);
+    const oldPhotoUrls = isReplacing ? getItemPhotos(dailyPhotoEditingPost).slice() : [];
+
+    showLoadingOverlay('오늘의 한 장을 올리는 중이야...');
+    try{
+      // 사진은 필수라서, 일반 게시물처럼 "사진 없이 저장할까?" 경로(saveWithPhotoFallback)를
+      // 쓰지 않음 - 업로드 실패하면 그냥 실패로 처리하고, 사진 없는 문서가 만들어지지 않게 함
+      const photos = await uploadPhotos(pendingDailyPhotoPhotos, (pct) => showLoadingOverlay(`올리는 중이야... ${pct}%`));
+      if(photos.length === 0) throw new Error('업로드된 사진이 없어');
+
+      const ref = db.collection('board').doc(docId);
+      if(isReplacing){
+        // 기존 반응·댓글·작성 시각·게시물 종류는 건드리지 않음
+        await ref.update({ photos, body: caption, updatedAt: Date.now() });
+        // Firestore 저장이 성공한 다음에만 이전 사진을 정리함 (실패해도 치명적이지 않으니 조용히 무시)
+        const photosToDelete = oldPhotoUrls.filter(url => !photos.includes(url));
+        await Promise.allSettled(photosToDelete.map(async (url) => {
+          try{ await storage.refFromURL(url).delete(); }
+          catch(err){ console.warn('이전 오늘의 한 장 사진 삭제 실패:', err); }
+        }));
+      } else {
+        await ref.set({
+          postType: 'dailyPhoto', author: identity, date: dateStr,
+          photos, body: caption, likes: [], comments: [], createdAt: Date.now()
+        });
+      }
+      closeDailyPhotoModal();
+    }catch(err){
+      console.error('오늘의 한 장 저장 실패:', err);
+      // 모달과 선택한 사진은 그대로 남겨서 다시 시도할 수 있게 함
+      alert('오늘의 한 장을 저장하지 못했어.\n인터넷 연결을 확인하고 다시 시도해줘.');
+    }finally{
+      hideLoadingOverlay();
+      saveBtn.disabled = false;
+    }
+  });
 
   // ---- 알림함 (안 읽은 알림 배지 + 목록) ----
   let unreadNotifications = [];
@@ -2921,7 +3809,7 @@ function startWatchers(){
         const idx = Number(el.dataset.notifIdx);
         const n = unreadNotifications[idx];
         if(!n) return;
-        const navigated = navigateToItem(n.tab, n.itemId, n.commentTs, n.replyTs);
+        const navigated = n.itemId ? navigateToItem(n.tab, n.itemId, n.commentTs, n.replyTs) : activateTab(n.tab);
         // 작성 중인 내용 때문에 이동이 취소됐다면, 오버레이도 안 닫고 읽음 처리도 안 함
         if(navigated){
           closeNotifOverlay();
@@ -3046,6 +3934,8 @@ function startWatchers(){
     currentUnsubscribes.forEach((unsubscribe)=>{
       try{ unsubscribe(); }catch(e){ /* 이미 해제된 구독은 무시 */ }
     });
+    if(typeof clearOpenedArchivePhoto === 'function') clearOpenedArchivePhoto();
+    stopDailyQuestionWatch();
     watchersStarted = false;
     visitWatchStarted = false;
     Object.keys(collectionWatchersStarted).forEach((key)=>{ collectionWatchersStarted[key] = false; });
@@ -3056,6 +3946,7 @@ function startWatchers(){
     // (앱 화면 자체는 로그인 게이트 뒤에 숨겨지므로 지금 당장 다시 그릴 필요는 없음)
     schedule = []; wishes = []; dateLogs = []; letters = []; boards = []; anniversaries = [];
     profiles = {};
+    todayQuestionData = null;
     openCommentSections.clear();
     openPostDetails.clear();
     openReplyInputs.clear();
@@ -3083,7 +3974,16 @@ function startWatchers(){
       watch(dateLogQuery, 'datelog', items=>{ dateLogs = items; renderDateLog(); renderHome(); });
     } else if(tabName === 'board'){
       const boardQuery = db.collection('board').orderBy('createdAt', 'desc').limit(100);
-      watch(boardQuery, 'board', items=>{ boards = items; renderBoard(); renderHome(); });
+      watch(boardQuery, 'board', items=>{
+        boards = items;
+        // 지금 임시로 열어서 보고 있는 과거 사진이 최근 100개 안에 없으면, 목록이 새로
+        // 갱신될 때 같이 사라지지 않도록 다시 끼워넣음
+        if(openedArchivePhotoId && !boards.some(b => b.id === openedArchivePhotoId)){
+          const cached = dailyPhotoArchiveItems.find(item => item.id === openedArchivePhotoId);
+          if(cached) boards.push(cached);
+        }
+        renderBoard(); renderHome();
+      });
     } else if(tabName === 'letter'){
       const letterQuery = db.collection('letters').orderBy('createdAt', 'desc').limit(100);
       watch(letterQuery, 'letters', items=>{ letters = items; renderLetters(); renderHome(); });
@@ -3366,18 +4266,18 @@ function startWatchers(){
       match: `${it.title||''} ${it.memo||''}`.toLowerCase()
     }));
     wishes.forEach(it => items.push({
-      tab:'wish', label:'위시', ts: it.createdAt || 0,
+      tab:'wish', label:'하고 싶은 것', ts: it.createdAt || 0,
       title: it.title, sub: it.body || '', item: it,
       match: `${it.title||''} ${it.body||''}`.toLowerCase()
     }));
     dateLogs.forEach(it => items.push({
-      tab:'datelog', label:'데이트기록', ts: it.createdAt || new Date(it.date+'T00:00:00').getTime(),
+      tab:'datelog', label:'함께한 날', ts: it.createdAt || new Date(it.date+'T00:00:00').getTime(),
       title: it.title, sub: it.memo || it.location || '', item: it,
       match: `${it.title||''} ${it.memo||''} ${it.location||''}`.toLowerCase()
     }));
     boards.forEach(it => items.push({
-      tab:'board', label:'게시판', ts: it.createdAt || 0,
-      title: it.title, sub: it.body || '', item: it,
+      tab:'board', label:'복작방', ts: it.createdAt || 0,
+      title: boardPreviewText(it), sub: it.body || '', item: it,
       match: `${it.title||''} ${it.body||''}`.toLowerCase()
     }));
     letters.forEach(it => items.push({
@@ -3580,13 +4480,13 @@ function startWatchers(){
     { list: () => schedule, tab:'schedule', label:'일정',
       getTitle: it => it.title, getSub: it => it.memo || fmtShortDate(it.date),
       getTs: it => it.createdAt || new Date(it.date+'T00:00:00').getTime() },
-    { list: () => wishes, tab:'wish', label:'위시',
+    { list: () => wishes, tab:'wish', label:'하고 싶은 것',
       getTitle: it => it.title, getSub: it => it.body || '', getTs: it => it.createdAt || 0 },
-    { list: () => dateLogs, tab:'datelog', label:'데이트기록',
+    { list: () => dateLogs, tab:'datelog', label:'함께한 날',
       getTitle: it => it.title, getSub: it => it.memo || it.location || '',
       getTs: it => it.createdAt || new Date(it.date+'T00:00:00').getTime() },
-    { list: () => boards, tab:'board', label:'게시판',
-      getTitle: it => it.title, getSub: it => it.body || '', getTs: it => it.createdAt || 0 },
+    { list: () => boards, tab:'board', label:'복작방',
+      getTitle: it => boardPreviewText(it), getSub: it => it.body || '', getTs: it => it.createdAt || 0 },
     { list: () => letters, tab:'letter', label:'편지',
       getTitle: it => it.title || (it.body||'').slice(0,20), getSub: it => it.body || '', getTs: it => it.createdAt || 0 },
   ];
@@ -3650,7 +4550,6 @@ function startWatchers(){
   function closeMyActivityOverlay(){
     document.getElementById('myActivityOverlay').classList.add('hidden');
   }
-  document.getElementById('myActivityBtn').addEventListener('click', openMyActivityOverlay);
   document.getElementById('myActivityCloseBtn').addEventListener('click', closeMyActivityOverlay);
   document.querySelectorAll('#myActivityCategoryRow .activity-cat-btn').forEach(btn=>{
     btn.addEventListener('click', ()=>{
