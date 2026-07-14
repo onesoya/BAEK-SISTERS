@@ -135,7 +135,7 @@ db.enablePersistence()
 
   // 코드 새로 줄 때마다 이 값 올림 - 홈 화면 맨 아래에 표시돼서, 최신 버전이 실제로
   // 적용됐는지 앱만 열어봐도 바로 확인할 수 있게 해둠.
-  const APP_VERSION = '2026.07.14-27';
+  const APP_VERSION = '2026.07.14-29';
   function colorKeyOf(name){ return PERSON_COLOR[name] || 'yellow'; }
   
   async function searchLocations(query){
@@ -743,10 +743,10 @@ async function uploadPhotos(photosArray, onProgress) {
     resumeRetryTimers = [];
 
     // 밤새 화면이 꺼져 있었다가 다음 날 다시 켰을 때, 1분 타이머를 기다리지 않고
-    // 바로 오늘 질문/오늘의 한 장으로 교체되게 함
+    // 바로 오늘 질문/오늘의 우리 카드로 교체되게 함
     if(identity){
       watchDailyQuestion();
-      renderDailyPhotoCard();
+      renderTodayUsCard();
     }
 
     // 예전엔 여기서 앱을 열 때마다 CLEAR_ALL_NOTIFICATIONS를 보내서 잠금화면/알림창의
@@ -1752,9 +1752,7 @@ function renderLetters() {
       }
     }
 
-    renderStatusBoard();
-
-    renderDailyPhotoCard();
+    renderTodayUsCard();
 
     const boardFeedCard = document.getElementById('homeBoardFeedCard');
     if(boardFeedCard){
@@ -1924,47 +1922,85 @@ function renderLetters() {
   }
 
   const STATUS_REACTION_OPTIONS = ['💜', 'ㅋㅋㅋ', '👀', '나도!'];
-  function renderStatusBoard(){
-    const board = document.getElementById('statusBoard');
-    if(!board) return;
-    board.innerHTML = ALL_NAMES.map(name=>{
-      const p = profiles[name];
-      const colorKey = colorKeyOf(name);
-      const emoji = (p && p.status && p.status.emoji) || '🙂';
-      const text = (p && p.status && p.status.text) || '상태 없음';
-      const memo = (p && p.status && p.status.memo) || '';
-      const updatedAt = p && p.status && p.status.updatedAt;
-      const timeAgo = updatedAt ? relativeTimeKR(updatedAt) : '';
-      const isStale = !!(updatedAt && (Date.now() - updatedAt > 24*60*60*1000)); // 24시간 지난 상태는 흐리게
-      const clickable = identity === name;
-      const reactions = (p && p.status && p.status.reactions) || {};
-      const reactionEntries = Object.entries(reactions).filter(([,e]) => e);
-      const myReaction = identity && reactions[identity];
-      return `<div class="status-card color-${colorKey} ${isStale ? 'status-stale' : ''}" ${clickable ? `data-status-edit="1"` : ''}>
-        <div class="s-name">${name}</div>
-        <div class="s-emoji">${escapeHTML(emoji)}</div>
-        <div class="s-text">${escapeHTML(text)}</div>
-        ${memo ? `<div class="s-memo">${escapeHTML(memo)}</div>` : ''}
-        <div class="s-time">${timeAgo}</div>
-        ${!clickable ? `<div class="s-reaction-row">
-          ${STATUS_REACTION_OPTIONS.map(r => `<button type="button" class="s-reaction-btn ${myReaction===r ? 'active' : ''}" data-react-name="${name}" data-react-emoji="${r}">${r}</button>`).join('')}
-          <button type="button" class="s-reaction-more-btn" data-react-name="${name}" title="다른 이모지로 반응">${myReaction && !STATUS_REACTION_OPTIONS.includes(myReaction) ? escapeHTML(myReaction) : '＋'}</button>
-        </div>` : ''}
-        ${reactionEntries.length > 0 ? `<div class="s-reaction-list">${reactionEntries.map(([n,e]) => `<span class="s-reaction-tag">${escapeHTML(String(e))} ${escapeHTML(n)}</span>`).join(' ')}</div>` : ''}
-      </div>`;
-    }).join('');
-    board.querySelectorAll('[data-status-edit]').forEach(el=>{
+  function renderTodayUsCard(){
+    const card = document.getElementById('todayUsCard');
+    if(!card) return;
+    const dateStr = localDateStr();
+    card.innerHTML = `
+      <div class="today-us-label">🌷 오늘의 우리</div>
+      <div class="today-us-grid">
+        ${ALL_NAMES.map(name => {
+          const p = profiles[name];
+          const colorKey = colorKeyOf(name);
+          const emoji = (p && p.status && p.status.emoji) || '🙂';
+          const text = (p && p.status && p.status.text) || '상태 없음';
+          const memo = (p && p.status && p.status.memo) || '';
+          const updatedAt = p && p.status && p.status.updatedAt;
+          const timeAgo = updatedAt ? relativeTimeKR(updatedAt) : '';
+          // 24시간 지난 상태는 문구·시간만 흐리게 (사진은 그대로 정상 표시)
+          const isStale = !!(updatedAt && (Date.now() - updatedAt > 24*60*60*1000));
+          const isMine = identity === name;
+          const reactions = (p && p.status && p.status.reactions) || {};
+          const reactionEntries = Object.entries(reactions).filter(([,e]) => e);
+          const myReaction = identity && reactions[identity];
+
+          const post = boards.find(b => b.postType === 'dailyPhoto' && b.author === name && b.date === dateStr);
+          const photo = post ? getItemPhotos(post)[0] : null;
+
+          return `<div class="today-us-cell color-${colorKey}">
+            <div class="today-us-photo ${photo ? '' : 'today-us-photo-empty'}" ${photo ? `data-photo-post-id="${post.id}"` : ''}>
+              ${photo ? `<img src="${photo}" loading="lazy">` : `<span class="today-us-photo-empty-text">사진 없음</span>`}
+            </div>
+            <div class="today-us-info">
+              <div class="today-us-name">${name}</div>
+              <div class="today-us-status ${isStale ? 'today-us-stale' : ''}">
+                <span>${escapeHTML(emoji)}</span> <span class="today-us-status-text">${escapeHTML(text)}</span>
+              </div>
+              ${memo ? `<div class="today-us-memo ${isStale ? 'today-us-stale' : ''}">${escapeHTML(memo)}</div>` : ''}
+              <div class="today-us-time ${isStale ? 'today-us-stale' : ''}">${timeAgo}</div>
+              ${isMine ? `
+                <div class="today-us-my-actions">
+                  <button type="button" class="today-us-action-btn" data-status-edit="1">상태 바꾸기</button>
+                  <button type="button" class="today-us-action-btn" data-photo-action-post-id="${post ? post.id : ''}">${photo ? '사진 교체' : '사진 올리기'}</button>
+                </div>
+              ` : `
+                <div class="s-reaction-row">
+                  ${STATUS_REACTION_OPTIONS.map(r => `<button type="button" class="s-reaction-btn ${myReaction===r ? 'active' : ''}" data-react-name="${name}" data-react-emoji="${r}">${r}</button>`).join('')}
+                  <button type="button" class="s-reaction-more-btn" data-react-name="${name}" title="다른 이모지로 반응">${myReaction && !STATUS_REACTION_OPTIONS.includes(myReaction) ? escapeHTML(myReaction) : '＋'}</button>
+                </div>
+              `}
+              ${reactionEntries.length > 0 ? `<div class="s-reaction-list">${reactionEntries.map(([n,e]) => `<span class="s-reaction-tag">${escapeHTML(String(e))} ${escapeHTML(n)}</span>`).join(' ')}</div>` : ''}
+            </div>
+          </div>`;
+        }).join('')}
+      </div>
+    `;
+    // 사진(있는 경우, 본인/타인 상관없이)을 누르면 복작방의 그 게시물로 이동
+    card.querySelectorAll('[data-photo-post-id]').forEach(el=>{
+      el.addEventListener('click', ()=> navigateToItem('board', el.dataset.photoPostId));
+    });
+    // 내 칸의 "상태 바꾸기"
+    card.querySelectorAll('[data-status-edit]').forEach(el=>{
       el.addEventListener('click', openStatusModal);
     });
+    // 내 칸의 "사진 올리기/교체"
+    card.querySelectorAll('[data-photo-action-post-id]').forEach(btn=>{
+      btn.addEventListener('click', (e)=>{
+        e.stopPropagation();
+        const postId = btn.dataset.photoActionPostId;
+        const existingPost = postId ? boards.find(b => b.id === postId) : null;
+        openDailyPhotoModal(existingPost || null);
+      });
+    });
     // 고정 4개 반응 버튼 - 누르면 바로 저장됨. 같은 걸 다시 누르면 취소, 다른 걸 누르면 교체
-    board.querySelectorAll('.s-reaction-btn').forEach(btn=>{
+    card.querySelectorAll('.s-reaction-btn').forEach(btn=>{
       btn.addEventListener('click', (e)=>{
         e.stopPropagation();
         saveStatusReaction(btn.dataset.reactName, btn.dataset.reactEmoji, /*toggle=*/true);
       });
     });
     // + 버튼 - 4개 말고 다른 이모지를 직접 고르고 싶을 때만 모달 열기
-    board.querySelectorAll('.s-reaction-more-btn').forEach(btn=>{
+    card.querySelectorAll('.s-reaction-more-btn').forEach(btn=>{
       btn.addEventListener('click', (e)=>{
         e.stopPropagation();
         openStatusReactionModal(btn.dataset.reactName);
@@ -3206,6 +3242,7 @@ function startWatchers(){
 
   // ---- 오늘의 질문 ----
   let todayQuestionData = null;
+  let dailyQuestionEditMode = false; // "수정" 버튼을 눌러서 입력창이 열려있는 상태인지
   let dailyQuestionUnsubscribe = null;
   let dailyQuestionWatchedDate = null;
   let dailyQuestionRolloverTimer = null;
@@ -3233,6 +3270,7 @@ function startWatchers(){
     if(dailyQuestionWatchedDate === dateStr) return; // 이미 오늘 날짜를 구독 중이면 그대로 둠
     if(dailyQuestionUnsubscribe){ dailyQuestionUnsubscribe(); dailyQuestionUnsubscribe = null; }
     dailyQuestionWatchedDate = dateStr;
+    dailyQuestionEditMode = false;
 
     // 날짜가 바뀌었을 때 기존 입력칸을 먼저 제거함 - 안 그러면 어제 답변이나
     // 입력하던 값이 오늘 질문 자리에 잠깐이라도 그대로 보일 수 있음
@@ -3251,7 +3289,7 @@ function startWatchers(){
       dailyQuestionRolloverTimer = setInterval(()=>{
         if(identity){
           watchDailyQuestion();
-          renderDailyPhotoCard();
+          renderTodayUsCard();
         }
       }, 60 * 1000);
     }
@@ -3373,31 +3411,60 @@ function startWatchers(){
     const prevTyped = prevInput ? prevInput.value : null;
     const prevSelStart = prevInput ? prevInput.selectionStart : null;
     const prevSelEnd = prevInput ? prevInput.selectionEnd : null;
-    const savedMine = (answers[identity] && answers[identity].text) || '';
+    const mine = answers[identity];
+    const hasAnswered = !!mine;
+    const savedMine = (mine && mine.text) || '';
+    // 아직 답 안 했으면 항상 입력창 노출, 답했으면 "수정"을 눌렀을 때만 입력창 노출
+    const showInput = !hasAnswered || dailyQuestionEditMode;
+    // 아직 저장 안 한 채로 타이핑 중이던 값이 있으면(저장된 값과 다르면) 그걸 우선 보여주고,
+    // 수정 모드로 막 들어온 거라면 기존 답변을 미리 채워둠(처음부터 다시 안 써도 되게)
+    const valueToShow = (prevTyped !== null && prevTyped !== savedMine) ? prevTyped : savedMine;
 
     card.innerHTML = `
       <div class="home-next-label">💭 오늘의 질문</div>
       <div class="daily-q-text">${escapeHTML(todayQuestionData.question || '')}</div>
       <div class="daily-q-answers">
         ${ALL_NAMES.map(name => {
-          if(name === identity){
-            const mine = answers[name];
-            // 아직 저장 안 한 채로 타이핑 중이던 값이 있으면(저장된 값과 다르면) 그걸 우선 보여줌
-            const valueToShow = (prevTyped !== null && prevTyped !== savedMine) ? prevTyped : (mine ? mine.text : '');
-            return `<div class="daily-q-my-row">
-              <input type="text" id="dailyQuestionInput" maxlength="60" placeholder="답변을 남겨봐" value="${escapeHTML(valueToShow)}">
-              <button type="button" id="dailyQuestionSubmitBtn">${mine ? '수정' : '답하기'}</button>
+          const a = answers[name];
+          const isMine = name === identity;
+          if(isMine && hasAnswered && !dailyQuestionEditMode){
+            return `<div class="daily-q-row daily-q-row-mine">
+              <span class="daily-q-name color-${colorKeyOf(name)}">${name}</span>
+              <span class="daily-q-answer">${escapeHTML(a.text)}</span>
+              <button type="button" class="daily-q-edit-btn" id="dailyQuestionEditBtn">수정</button>
             </div>`;
           }
-          const a = answers[name];
-          return `<div class="daily-q-row">
+          return `<div class="daily-q-row ${isMine ? 'daily-q-row-mine' : ''}">
             <span class="daily-q-name color-${colorKeyOf(name)}">${name}</span>
             <span class="daily-q-answer ${a ? '' : 'daily-q-answer-empty'}">${a ? escapeHTML(a.text) : '아직 답하지 않았어'}</span>
           </div>`;
         }).join('')}
       </div>
+      ${showInput ? `
+        <div class="daily-q-my-row">
+          <input type="text" id="dailyQuestionInput" maxlength="60" placeholder="답변을 적어봐" value="${escapeHTML(valueToShow)}">
+          <button type="button" id="dailyQuestionSubmitBtn">${hasAnswered ? '저장' : '답하기'}</button>
+        </div>
+        ${hasAnswered ? `<button type="button" class="daily-q-edit-cancel-btn" id="dailyQuestionEditCancelBtn">취소</button>` : ''}
+      ` : ''}
       <button type="button" class="daily-q-archive-link" id="dailyQuestionArchiveBtn">💭 지난 질문 모아보기</button>
     `;
+    const editBtn = document.getElementById('dailyQuestionEditBtn');
+    if(editBtn){
+      editBtn.addEventListener('click', ()=>{
+        dailyQuestionEditMode = true;
+        renderDailyQuestionCard();
+        const newInput = document.getElementById('dailyQuestionInput');
+        if(newInput) newInput.focus();
+      });
+    }
+    const editCancelBtn = document.getElementById('dailyQuestionEditCancelBtn');
+    if(editCancelBtn){
+      editCancelBtn.addEventListener('click', ()=>{
+        dailyQuestionEditMode = false;
+        renderDailyQuestionCard();
+      });
+    }
     const submitBtn = document.getElementById('dailyQuestionSubmitBtn');
     if(submitBtn){
       submitBtn.addEventListener('click', submitDailyQuestionAnswer);
@@ -3446,8 +3513,21 @@ function startWatchers(){
     if(!input) return;
     const text = input.value.trim();
     if(!text) return;
+
+    // 기존 답변과 완전히 같으면 서버에 다시 쓰지 않고 그냥 수정 모드만 닫음
+    const savedText = (todayQuestionData && todayQuestionData.answers && todayQuestionData.answers[identity] && todayQuestionData.answers[identity].text) || '';
+    if(text === savedText){
+      dailyQuestionEditMode = false;
+      renderDailyQuestionCard();
+      return;
+    }
+
     const fieldPath = `answers.${identity}`;
     db.collection('dailyQuestions').doc(dateStr).update({ [fieldPath]: { text, updatedAt: Date.now() } })
+      .then(()=>{
+        dailyQuestionEditMode = false;
+        renderDailyQuestionCard();
+      })
       .catch(err => {
         console.error('오늘의 질문 답변 저장 실패', err);
         alert('답변을 저장하지 못했어. 잠시 후 다시 시도해줘.');
@@ -3592,49 +3672,6 @@ function startWatchers(){
     }, err => console.error('과거 오늘의 한 장 구독 실패', err));
   }
 
-  function renderDailyPhotoCard(){
-    const card = document.getElementById('dailyPhotoCard');
-    if(!card) return;
-    const dateStr = localDateStr();
-    card.innerHTML = `
-      <div class="home-next-label">📸 오늘의 한 장</div>
-      <div class="daily-photo-grid">
-        ${ALL_NAMES.map(name => {
-          const post = boards.find(b => b.postType === 'dailyPhoto' && b.author === name && b.date === dateStr);
-          const photo = post ? getItemPhotos(post)[0] : null;
-          const isMine = identity === name;
-          if(photo){
-            return `<div class="daily-photo-cell" data-photo-post-id="${post.id}">
-              <img src="${photo}" loading="lazy">
-              <span class="daily-photo-name color-${colorKeyOf(name)}">${name}</span>
-              ${isMine ? `<button type="button" class="daily-photo-replace-btn" data-photo-replace-id="${post.id}">교체</button>` : ''}
-            </div>`;
-          }
-          return `<div class="daily-photo-cell daily-photo-empty" ${isMine ? 'data-photo-upload="1"' : ''}>
-            <span class="daily-photo-empty-text">${escapeHTML(name)}의 오늘은<br>아직 비어 있어</span>
-          </div>`;
-        }).join('')}
-      </div>
-    `;
-    // 사진 자체를 누르면(내 것/남의 것 상관없이) 복작방의 그 게시글로 이동해서 댓글·좋아요 확인
-    card.querySelectorAll('[data-photo-post-id]').forEach(el=>{
-      el.addEventListener('click', (e)=>{
-        if(e.target.closest('[data-photo-replace-id]')) return; // 교체 버튼 클릭이면 아래에서 따로 처리
-        navigateToItem('board', el.dataset.photoPostId);
-      });
-    });
-    // 내 사진의 "교체" 버튼은 전용 교체 모달을 염 (일반 복작방 수정과 분리 - 한 장 제한,
-    // 공지 설정 불가, 좋아요·댓글 보존을 확실히 지키기 위함)
-    card.querySelectorAll('[data-photo-replace-id]').forEach(btn=>{
-      btn.addEventListener('click', (e)=>{
-        e.stopPropagation();
-        const post = boards.find(b => b.id === btn.dataset.photoReplaceId);
-        if(post) openDailyPhotoModal(post);
-      });
-    });
-    const uploadCell = card.querySelector('[data-photo-upload]');
-    if(uploadCell) uploadCell.addEventListener('click', ()=> openDailyPhotoModal(null));
-  }
   // null이면 오늘 처음 올리는 것, 기존 게시물을 넘기면 그 사진을 교체하는 모드
   let dailyPhotoEditingPost = null;
   function openDailyPhotoModal(existingPost){
@@ -3849,7 +3886,7 @@ function startWatchers(){
     if(isReplacing && dailyPhotoEditingPost.date !== dateStr){
       alert('날짜가 바뀌었어. 오늘의 한 장에서 다시 사진을 골라줘!');
       closeDailyPhotoModal();
-      renderDailyPhotoCard();
+      renderTodayUsCard();
       return;
     }
     if(isReplacing && !confirm('오늘의 한 장을 교체할까? (좋아요·댓글은 그대로 남아)')) return;
@@ -4084,7 +4121,7 @@ function startWatchers(){
       db.collection('profiles').onSnapshot(snap=>{
         profiles = {};
         snap.forEach(doc=>{ profiles[doc.id] = doc.data(); });
-        renderStatusBoard();
+        renderTodayUsCard();
       }, err=>console.error('프로필 구독 실패', err))
     );
   }

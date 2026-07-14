@@ -233,8 +233,17 @@
   .daily-q-name.color-red{ background:var(--red-soft); color:#C24040; }
   .daily-q-name.color-green{ background:var(--green-soft); color:#2E7A42; }
   .daily-q-name.color-blue{ background:var(--blue-soft); color:#2B5CA8; }
-  .daily-q-answer{ color:var(--plum); word-break:break-word; }
+  .daily-q-answer{ color:var(--plum); word-break:break-word; flex:1; }
   .daily-q-answer-empty{ color:var(--plum-soft); font-style:italic; }
+  .daily-q-row-mine{ background:var(--cream); border-radius:8px; padding:6px 8px; margin:0 -8px; }
+  .daily-q-edit-btn{
+    flex-shrink:0; background:none; border:none; color:var(--plum-soft); font-size:12px;
+    text-decoration:underline; cursor:pointer; padding:0;
+  }
+  .daily-q-edit-cancel-btn{
+    display:block; width:100%; text-align:center; background:none; border:none;
+    color:var(--plum-soft); font-size:12px; padding:6px 0 0; cursor:pointer;
+  }
   .daily-q-my-row{ display:flex; gap:6px; }
   .daily-q-my-row input{
     flex:1; min-width:0; border:2px solid #F0E4E9; border-radius:8px; padding:7px 10px;
@@ -283,32 +292,6 @@
   .daily-q-archive-answer-name.color-green{ background:var(--green-soft); color:#2E7A42; }
   .daily-q-archive-answer-name.color-blue{ background:var(--blue-soft); color:#2B5CA8; }
   .daily-q-archive-answer-text{ color:var(--plum); word-break:break-word; }
-
-  /* 오늘의 한 장 */
-  .daily-photo-grid{ display:grid; grid-template-columns:1fr 1fr; gap:8px; }
-  .daily-photo-cell{
-    position:relative; aspect-ratio:1/1; border-radius:10px; overflow:hidden; cursor:pointer;
-    border:2px solid #F0E4E9;
-  }
-  .daily-photo-cell img{ width:100%; height:100%; object-fit:cover; display:block; }
-  .daily-photo-name{
-    position:absolute; left:5px; bottom:5px; font-family:'DungGeunMo',sans-serif; font-size:11px;
-    padding:2px 7px; border-radius:7px; background:rgba(255,255,255,0.9);
-  }
-  .daily-photo-name.color-yellow{ color:#8A6600; }
-  .daily-photo-name.color-red{ color:#C24040; }
-  .daily-photo-name.color-green{ color:#2E7A42; }
-  .daily-photo-name.color-blue{ color:#2B5CA8; }
-  .daily-photo-replace-btn{
-    position:absolute; right:5px; bottom:5px; font-size:10.5px; padding:2px 7px; border-radius:7px;
-    background:rgba(255,255,255,0.9); border:none; color:var(--plum-soft); cursor:pointer;
-    font-family:'DungGeunMo',sans-serif;
-  }
-  .daily-photo-empty{
-    display:flex; align-items:center; justify-content:center; background:var(--cream);
-    text-align:center; padding:8px;
-  }
-  .daily-photo-empty-text{ font-size:11.5px; color:var(--plum-soft); line-height:1.4; }
 
   .home-board-feed-item{
     display:flex; align-items:center; gap:8px; padding:8px 0;
@@ -751,23 +734,38 @@
   .chip-toggle.active.color-green{ background:var(--green); color:var(--white); border-color:var(--green); }
   .chip-toggle.active.color-blue{ background:var(--blue); color:var(--white); border-color:var(--blue); }
 
-  /* 홈 - 오늘의 상태보드 */
-  .status-board{ display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:14px; margin-bottom:22px; }
-  .status-card{border:2.5px solid var(--plum);
-    background:var(--white); border-radius:10px; padding:12px;
-    box-shadow:3px 3px 0 rgba(66,58,87,0.25); cursor:pointer;
+  /* 홈 - 오늘의 우리 (상태 + 오늘의 한 장 통합) */
+  .today-us-card{ margin-top:14px; margin-bottom:22px; }
+  .today-us-label{ font-size:12px; color:var(--plum-soft); margin-bottom:8px; }
+  .today-us-grid{ display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  .today-us-cell{
+    border:2.5px solid var(--plum); background:var(--white); border-radius:10px; overflow:hidden;
+    box-shadow:3px 3px 0 rgba(66,58,87,0.25);
   }
-  .status-card .s-name{ font-family:'DungGeunMo',sans-serif; font-size:12.5px; margin-bottom:4px; }
-  .status-card.color-yellow .s-name{ color:#8A6600; }
-  .status-card.color-red .s-name{ color:#C24040; }
-  .status-card.color-green .s-name{ color:#2E7A42; }
-  .status-card.color-blue .s-name{ color:#2B5CA8; }
-  .status-card .s-emoji{ font-size:21px; }
-  .status-card .s-text{ font-size:12.5px; color:var(--plum); margin-top:3px; line-height:1.3; word-break:break-word; }
-  .status-card .s-memo{ font-size:11px; color:var(--plum-soft); margin-top:2px; line-height:1.3; word-break:break-word; }
-  .status-card .s-time{ font-size:10px; color:var(--plum-soft); margin-top:5px; }
-  /* 24시간 지난 상태는 흐리게 표시 */
-  .status-card.status-stale{ opacity:0.55; }
+  .today-us-photo{ width:100%; height:96px; background:var(--cream); }
+  .today-us-photo img{ width:100%; height:100%; object-fit:cover; display:block; cursor:pointer; }
+  .today-us-photo-empty{ display:flex; align-items:center; justify-content:center; }
+  .today-us-photo-empty-text{ font-size:11px; color:var(--plum-soft); }
+  .today-us-cell.color-yellow .today-us-photo-empty{ background:var(--yellow-soft); }
+  .today-us-cell.color-red .today-us-photo-empty{ background:var(--red-soft); }
+  .today-us-cell.color-green .today-us-photo-empty{ background:var(--green-soft); }
+  .today-us-cell.color-blue .today-us-photo-empty{ background:var(--blue-soft); }
+  .today-us-info{ padding:10px; }
+  .today-us-name{ font-family:'DungGeunMo',sans-serif; font-size:12.5px; margin-bottom:4px; }
+  .today-us-cell.color-yellow .today-us-name{ color:#8A6600; }
+  .today-us-cell.color-red .today-us-name{ color:#C24040; }
+  .today-us-cell.color-green .today-us-name{ color:#2E7A42; }
+  .today-us-cell.color-blue .today-us-name{ color:#2B5CA8; }
+  .today-us-status{ font-size:12.5px; color:var(--plum); line-height:1.3; word-break:break-word; }
+  .today-us-memo{ font-size:11px; color:var(--plum-soft); margin-top:2px; line-height:1.3; word-break:break-word; }
+  .today-us-time{ font-size:10px; color:var(--plum-soft); margin-top:5px; }
+  /* 24시간 지난 상태는 문구·시간만 흐리게 (사진은 항상 정상 표시) */
+  .today-us-stale{ opacity:0.55; }
+  .today-us-my-actions{ display:flex; gap:5px; margin-top:8px; }
+  .today-us-action-btn{
+    flex:1; background:var(--cream); border:1.5px solid #F0E4E9; border-radius:7px;
+    font-size:11px; padding:5px 2px; cursor:pointer; font-family:'DungGeunMo',sans-serif; color:var(--plum-soft);
+  }
   /* 상태에 바로 누르는 빠른 반응 (고정 4개 + 다른 이모지 고르는 + 버튼) */
   .s-reaction-row{ display:flex; gap:4px; margin-top:7px; flex-wrap:wrap; }
   .s-reaction-btn, .s-reaction-more-btn{
