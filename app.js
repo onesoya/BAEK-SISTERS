@@ -135,7 +135,7 @@ db.enablePersistence()
 
   // 코드 새로 줄 때마다 이 값 올림 - 홈 화면 맨 아래에 표시돼서, 최신 버전이 실제로
   // 적용됐는지 앱만 열어봐도 바로 확인할 수 있게 해둠.
-  const APP_VERSION = '2026.07.15-7';
+  const APP_VERSION = '2026.07.15-8';
   function colorKeyOf(name){ return PERSON_COLOR[name] || 'yellow'; }
   
   async function searchLocations(query){
@@ -479,11 +479,37 @@ async function uploadPhotos(photosArray, onProgress) {
   let scrollPollInterval = null; // 폴링 타이머 추적 (성공하면 바로 꺼주기 위함)
 
   function scrollToEl(el){
+    if(!el) return;
+    // 0.2초 사이에 화면이 다시 그려질 수 있어서(예: 개별 실시간 구독의 첫 응답 도착),
+    // 지금 갖고 있는 요소 참조가 그 사이 stale해질 수 있음 - 나중에 다시 찾을 수 있는
+    // 정보를 미리 저장해두고, 실제 스크롤 시점에 필요하면 새로 찾음
+    const locator = {
+      id: el.id || '',
+      itemId: el.dataset ? (el.dataset.itemId || '') : '',
+      commentAnchor: el.dataset ? (el.dataset.commentAnchor || '') : '',
+      archiveDate: el.dataset ? (el.dataset.archiveDate || '') : '',
+    };
     setTimeout(() => {
-      el.getBoundingClientRect(); // 스크롤 직전에 강제로 레이아웃 계산을 끝내게 함 (모바일에서 위치 계산이 덜 끝난 채로 스크롤되는 것 방지)
-      el.scrollIntoView({behavior:'smooth', block:'center'});
-      el.classList.add('search-flash');
-      setTimeout(()=> el.classList.remove('search-flash'), 1600);
+      let target = el;
+      if(!target.isConnected){
+        if(locator.id){
+          target = document.getElementById(locator.id);
+        } else {
+          const activePanel = document.querySelector('.tab-panel.active');
+          if(locator.itemId){
+            target = activePanel && activePanel.querySelector(`[data-item-id="${locator.itemId}"]`);
+          } else if(locator.commentAnchor){
+            target = activePanel && activePanel.querySelector(`[data-comment-anchor="${locator.commentAnchor}"]`);
+          } else if(locator.archiveDate){
+            target = document.querySelector(`[data-archive-date="${locator.archiveDate}"]`);
+          }
+        }
+      }
+      if(!target || !target.isConnected) return;
+      target.getBoundingClientRect(); // 스크롤 직전에 강제로 레이아웃 계산을 끝내게 함 (모바일에서 위치 계산이 덜 끝난 채로 스크롤되는 것 방지)
+      target.scrollIntoView({behavior:'smooth', block:'center'});
+      target.classList.add('search-flash');
+      setTimeout(()=> { if(target && target.isConnected) target.classList.remove('search-flash'); }, 1600);
     }, 200);
   }
 
