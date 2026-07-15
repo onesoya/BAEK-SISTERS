@@ -135,7 +135,7 @@ db.enablePersistence()
 
   // 코드 새로 줄 때마다 이 값 올림 - 홈 화면 맨 아래에 표시돼서, 최신 버전이 실제로
   // 적용됐는지 앱만 열어봐도 바로 확인할 수 있게 해둠.
-  const APP_VERSION = '2026.07.15-1';
+  const APP_VERSION = '2026.07.15-7';
   function colorKeyOf(name){ return PERSON_COLOR[name] || 'yellow'; }
   
   async function searchLocations(query){
@@ -917,7 +917,9 @@ async function uploadPhotos(photosArray, onProgress) {
   let letterExpandedGroups = new Set();
   let boardExpandedGroups = new Set();
 
-  // ---- 사진 확대뷰 (핀치줌 / 팬 / 스와이프 넘기기 / 더블탭) ----
+  // ---- 사진 확대뷰 (핀치줌 / 팬 / 스와이프 넘기기 / 아래로 밀어 닫기 / 더블탭) ----
+  // 오늘의 한 장 아카이브에서도 같은 뷰어를 쓸 수 있도록 여는 함수를 바깥에 연결함.
+  let openPhotoLightbox = null;
   (function(){
     const lightbox = document.getElementById('photoLightbox');
     const stage = document.getElementById('lightboxStage');
@@ -926,6 +928,7 @@ async function uploadPhotos(photosArray, onProgress) {
     const prevBtn = document.getElementById('lightboxPrev');
     const nextBtn = document.getElementById('lightboxNext');
     const counter = document.getElementById('lightboxCounter');
+    const viewPostBtn = document.getElementById('lightboxViewPostBtn');
 
     let scale = 1, panX = 0, panY = 0;
     let startScale = 1, startDist = 0;
@@ -935,6 +938,7 @@ async function uploadPhotos(photosArray, onProgress) {
     let swipeStartX = 0, swipeStartY = 0, swipeActive = false;
 
     let currentPhotos = [];
+    let currentPostIds = [];
     let currentIndex = 0;
 
     function applyTransform(){
@@ -949,6 +953,8 @@ async function uploadPhotos(photosArray, onProgress) {
       nextBtn.classList.toggle('hidden', !multi || currentIndex === currentPhotos.length - 1);
       counter.classList.toggle('hidden', !multi);
       if(multi) counter.textContent = `${currentIndex + 1} / ${currentPhotos.length}`;
+      const postId = currentPostIds[currentIndex] || '';
+      viewPostBtn.classList.toggle('hidden', !postId);
     }
     function showCurrentPhoto(){
       img.src = currentPhotos[currentIndex];
@@ -961,8 +967,9 @@ async function uploadPhotos(photosArray, onProgress) {
     function goPrev(){
       if(currentIndex > 0){ currentIndex--; showCurrentPhoto(); }
     }
-    function openLightbox(photos, index){
+    function openLightbox(photos, index, postIds){
       currentPhotos = photos;
+      currentPostIds = Array.isArray(postIds) ? postIds : [];
       currentIndex = index;
       showCurrentPhoto();
       lightbox.classList.remove('hidden');
@@ -970,10 +977,21 @@ async function uploadPhotos(photosArray, onProgress) {
     function closeLightbox(){
       lightbox.classList.add('hidden');
       img.src = '';
+      currentPhotos = [];
+      currentPostIds = [];
+      currentIndex = 0;
+      resetTransform();
     }
+    openPhotoLightbox = openLightbox;
     closeBtn.addEventListener('click', closeLightbox);
     prevBtn.addEventListener('click', goPrev);
     nextBtn.addEventListener('click', goNext);
+    viewPostBtn.addEventListener('click', ()=>{
+      const postId = currentPostIds[currentIndex];
+      if(!postId) return;
+      closeLightbox();
+      openDailyPhotoArchivePost(postId);
+    });
     stage.addEventListener('click', (e)=>{
       if(e.target === stage) closeLightbox();
     });
@@ -1039,7 +1057,11 @@ async function uploadPhotos(photosArray, onProgress) {
           const t = e.changedTouches[0];
           const dx = t.clientX - swipeStartX;
           const dy = t.clientY - swipeStartY;
-          if(Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy)){
+          // 기본 배율에서 아래로 충분히 밀면 닫음. 확대 중에는 swipeActive가
+          // 켜지지 않으므로 사진을 아래로 팬하는 동작과 충돌하지 않음.
+          if(dy > 90 && Math.abs(dy) > Math.abs(dx) * 1.15){
+            closeLightbox();
+          } else if(Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy)){
             if(dx < 0) goNext(); else goPrev();
           }
         }
@@ -1052,7 +1074,7 @@ async function uploadPhotos(photosArray, onProgress) {
       if(target){
         const container = target.closest('.card-photos');
         const imgs = Array.from(container.querySelectorAll('img'));
-        openLightbox(imgs.map(i=>i.src), imgs.indexOf(target));
+        openLightbox(imgs.map(i=>i.src), imgs.indexOf(target), []);
       }
     });
   })();
@@ -1320,6 +1342,7 @@ function renderCalendar(){
         ? filtered.map(scheduleCardHTML).join('')
         : '<div class="empty-state">이 날짜엔 일정이 없어.</div>';
       toggleBtn.classList.add('hidden');
+      toggleBtn.classList.remove('past-open');
       pastSection.classList.add('hidden');
       tryConsumePendingScroll();
       return;
@@ -1329,6 +1352,7 @@ function renderCalendar(){
     if(scheduleData.length === 0){
       list.innerHTML = '<div class="empty-state"><span class="empty-emoji">🗓️</span>아직 등록된 일정이 없어.<br>첫 일정을 추가해볼까?</div>';
       toggleBtn.classList.add('hidden');
+      toggleBtn.classList.remove('past-open');
       pastSection.classList.add('hidden');
       tryConsumePendingScroll();
       return;
@@ -1344,10 +1368,12 @@ function renderCalendar(){
     if(past.length > 0){
       toggleBtn.classList.remove('hidden');
       toggleBtn.textContent = showPastSchedule ? '지난 일정 숨기기' : `지난 일정 ${past.length}개 보기`;
+      toggleBtn.classList.toggle('past-open', showPastSchedule);
       pastSection.classList.toggle('hidden', !showPastSchedule);
       pastSection.innerHTML = past.map(scheduleCardHTML).join('');
     } else {
       toggleBtn.classList.add('hidden');
+      toggleBtn.classList.remove('past-open');
       pastSection.classList.add('hidden');
     }
     tryConsumePendingScroll();
@@ -1405,6 +1431,7 @@ function renderCalendar(){
         ? '<div class="empty-state"><span class="empty-emoji">💭</span>아직 하고 싶은 일이 없어.<br>버킷리스트를 적어볼까?</div>'
         : '<div class="empty-state"><span class="empty-emoji">💭</span>해당하는 게 없어.</div>';
       toggleBtn.classList.add('hidden');
+      toggleBtn.classList.remove('past-open');
       doneSection.classList.add('hidden');
       tryConsumePendingScroll();
       return;
@@ -1419,10 +1446,12 @@ function renderCalendar(){
     if(done.length > 0){
       toggleBtn.classList.remove('hidden');
       toggleBtn.textContent = showDoneWishes ? '완료한 것 숨기기' : `완료한 것 ${done.length}개 보기`;
+      toggleBtn.classList.toggle('past-open', showDoneWishes);
       doneSection.classList.toggle('hidden', !showDoneWishes);
       doneSection.innerHTML = done.map(wishCardHTML).join('');
     } else {
       toggleBtn.classList.add('hidden');
+      toggleBtn.classList.remove('past-open');
       doneSection.classList.add('hidden');
     }
     tryConsumePendingScroll();
@@ -2182,6 +2211,11 @@ function renderLetters() {
       // (안 지우면 일반 목록 구독이 갱신될 때마다 계속 다시 끼워넣어져서 안 사라짐)
       if(currentTab === 'board' && typeof clearOpenedArchivePhoto === 'function'){
         clearOpenedArchivePhoto();
+      }
+      // 개별 조회해서 보호해두던 알림 대상도, 그 탭을 완전히 떠나면 더 이상 지킬 필요 없음
+      // (중앙 정리 함수를 써야 실제 배열에서도 빠지고 개별 구독도 해제됨)
+      if(openedNotificationTarget && openedNotificationTarget.tab === currentTab){
+        clearOpenedNotificationTarget();
       }
     }
     document.querySelectorAll('.tab-panel').forEach(p=>p.classList.remove('active'));
@@ -3301,7 +3335,7 @@ function startWatchers(){
   }
   // 지난 질문은 실시간으로 계속 볼 필요가 없어서, 열 때 한 번만 조회함(지속 구독 안 함)
   let dailyQuestionArchiveExpanded = new Set();
-  async function openDailyQuestionArchive(){
+  async function openDailyQuestionArchive(targetDate){
     const overlay = document.getElementById('dailyQuestionArchiveOverlay');
     const results = document.getElementById('dailyQuestionArchiveResults');
     overlay.classList.remove('hidden');
@@ -3332,6 +3366,8 @@ function startWatchers(){
         results.innerHTML = '<div class="empty-state"><span class="empty-emoji">💭</span>아직 쌓인 지난 질문이 없어.</div>';
         return;
       }
+      // 특정 날짜(예: 지난 질문 알림을 눌러서 들어온 경우)로 바로 온 거라면 미리 펼쳐둠
+      if(targetDate) dailyQuestionArchiveExpanded.add(targetDate);
       // Firestore 쿼리에서 정렬하지 않고 앱에서 날짜 역순으로 정렬
       items.sort((a,b) => b.date.localeCompare(a.date));
       // 월별로 묶어서 표시 (YYYY-MM 기준)
@@ -3376,6 +3412,11 @@ function startWatchers(){
           else { dailyQuestionArchiveExpanded.add(date); answersEl.classList.remove('hidden'); }
         });
       });
+      // 특정 날짜로 찾아온 거라면, 그 행까지 스크롤하고 잠깐 강조
+      if(targetDate){
+        const targetRow = results.querySelector(`[data-archive-date="${targetDate}"]`);
+        if(targetRow) scrollToEl(targetRow);
+      }
     }catch(e){
       console.error('지난 질문 불러오기 실패', e);
       const errorDetail = (e && (e.code || e.message)) ? String(e.code || e.message) : 'unknown-error';
@@ -3572,6 +3613,7 @@ function startWatchers(){
   // 전체를 한 번만 조회해서 씀 (실시간 구독은 아님 - 지난 기록 보는 용도라 필요 없음)
   let dailyPhotoArchiveFilter = 'all';
   let dailyPhotoArchiveItems = [];
+  let dailyPhotoArchiveVisibleItems = [];
   let dailyPhotoArchiveLoaded = false;
   async function loadDailyPhotoArchive(){
     const list = document.getElementById('dailyPhotoArchiveList');
@@ -3608,6 +3650,7 @@ function startWatchers(){
     const filtered = dailyPhotoArchiveFilter === 'all'
       ? dailyPhotoArchiveItems
       : dailyPhotoArchiveItems.filter(b => b.author === dailyPhotoArchiveFilter);
+    dailyPhotoArchiveVisibleItems = filtered.slice();
     if(filtered.length === 0){
       list.innerHTML = '<div class="empty-state"><span class="empty-emoji">📸</span>아직 쌓인 오늘의 한 장이 없어.</div>';
       return;
@@ -3626,9 +3669,21 @@ function startWatchers(){
       return `<div class="dp-archive-month-label">${label}</div>
         <div class="dp-archive-grid">${groups[monthKey].map(dailyPhotoArchiveThumbHTML).join('')}</div>`;
     }).join('');
-    // 사진을 누르면 복작방의 원본 게시글로 이동해서 댓글·좋아요·반응까지 확인 가능
+    // 사진을 누르면 먼저 확대뷰로 감상함. 현재 사람 필터에 보이는 사진 전체를
+    // 같은 순서로 넘겨서 좌우 스와이프로 연속해서 볼 수 있게 함.
     list.querySelectorAll('[data-photo-post-id]').forEach(el=>{
-      el.addEventListener('click', ()=> openDailyPhotoArchivePost(el.dataset.photoPostId));
+      el.addEventListener('click', ()=>{
+        const entries = dailyPhotoArchiveVisibleItems
+          .map(item => ({ item, photo: getItemPhotos(item)[0] }))
+          .filter(entry => !!entry.photo);
+        const index = entries.findIndex(entry => entry.item.id === el.dataset.photoPostId);
+        if(index < 0 || typeof openPhotoLightbox !== 'function') return;
+        openPhotoLightbox(
+          entries.map(entry => entry.photo),
+          index,
+          entries.map(entry => entry.item.id)
+        );
+      });
     });
   }
   setupAuthorFilterRow('dailyPhotoArchiveFilterRow', ()=>dailyPhotoArchiveFilter, (v)=>{ dailyPhotoArchiveFilter = v; }, renderDailyPhotoArchive);
@@ -4167,6 +4222,7 @@ function startWatchers(){
       try{ unsubscribe(); }catch(e){ /* 이미 해제된 구독은 무시 */ }
     });
     if(typeof clearOpenedArchivePhoto === 'function') clearOpenedArchivePhoto();
+    if(typeof clearOpenedNotificationTarget === 'function') clearOpenedNotificationTarget();
     stopDailyQuestionWatch();
     watchersStarted = false;
     visitWatchStarted = false;
@@ -4197,17 +4253,26 @@ function startWatchers(){
       const scheduleQuery = db.collection('schedule')
                               .where('date', '>=', pastDateStr)
                               .orderBy('date', 'asc');
-      watch(scheduleQuery, 'schedule', items=>{ schedule = items; renderSchedule(); renderCalendar(); renderHome(); });
+      watch(scheduleQuery, 'schedule', items=>{
+        schedule = preserveOpenedNotificationTarget('schedule', items);
+        renderSchedule(); renderCalendar(); renderHome();
+      });
     } else if(tabName === 'wish'){
       const wishQuery = db.collection('wishlist').orderBy('createdAt', 'desc').limit(100);
-      watch(wishQuery, 'wishlist', items=>{ wishes = items; renderWish(); renderHome(); });
+      watch(wishQuery, 'wishlist', items=>{
+        wishes = preserveOpenedNotificationTarget('wish', items);
+        renderWish(); renderHome();
+      });
     } else if(tabName === 'datelog'){
       const dateLogQuery = db.collection('datelog').orderBy('date', 'desc').limit(100);
-      watch(dateLogQuery, 'datelog', items=>{ dateLogs = items; renderDateLog(); renderHome(); });
+      watch(dateLogQuery, 'datelog', items=>{
+        dateLogs = preserveOpenedNotificationTarget('datelog', items);
+        renderDateLog(); renderHome();
+      });
     } else if(tabName === 'board'){
       const boardQuery = db.collection('board').orderBy('createdAt', 'desc').limit(100);
       watch(boardQuery, 'board', items=>{
-        boards = items;
+        boards = preserveOpenedNotificationTarget('board', items);
         // 지금 임시로 열어서 보고 있는 과거 사진이 최근 100개 안에 없으면, 목록이 새로
         // 갱신될 때 같이 사라지지 않도록 다시 끼워넣음
         if(openedArchivePhotoId && !boards.some(b => b.id === openedArchivePhotoId)){
@@ -4218,7 +4283,10 @@ function startWatchers(){
       });
     } else if(tabName === 'letter'){
       const letterQuery = db.collection('letters').orderBy('createdAt', 'desc').limit(100);
-      watch(letterQuery, 'letters', items=>{ letters = items; renderLetters(); renderHome(); });
+      watch(letterQuery, 'letters', items=>{
+        letters = preserveOpenedNotificationTarget('letter', items);
+        renderLetters(); renderHome();
+      });
     }
   }
   
@@ -4550,7 +4618,146 @@ function startWatchers(){
 
   const TAB_TO_COL = { wish:'wishlist', datelog:'datelog', board:'board', letter:'letters' };
 
+  // schedule/wish/datelog/board/letter 각각의 배열을 읽고/쓰고/다시 그리는 방법을
+  // 한곳에 모아둠 - navigateToItem()과 ensureNotificationTargetLoaded()에서 공용으로 씀
+  const TAB_DATA_ACCESS = {
+    schedule: { col: 'schedule', getArr: () => schedule, setArr: (v) => { schedule = v; }, render: renderSchedule },
+    wish:     { col: 'wishlist', getArr: () => wishes,   setArr: (v) => { wishes = v; },   render: renderWish },
+    datelog:  { col: 'datelog',  getArr: () => dateLogs, setArr: (v) => { dateLogs = v; }, render: renderDateLog },
+    board:    { col: 'board',    getArr: () => boards,   setArr: (v) => { boards = v; },   render: renderBoard },
+    letter:   { col: 'letters',  getArr: () => letters,  setArr: (v) => { letters = v; },  render: renderLetters },
+  };
+
+  // 게시물이 로컬 배열(이미 화면에 그려질 준비가 된 데이터)에 있을 때, 알림이 가리키는
+  // 위치가 접힌 영역(월별 그룹, 완료한 위시, 지난 일정) 안에 있으면 미리 펼쳐둠
+  function expandGroupsForItem(tab, item){
+    if(tab === 'datelog'){
+      const key = groupKeyForTimestamp(new Date(item.date + 'T00:00:00').getTime());
+      if(key) dateLogExpandedGroups.add(key);
+    } else if(tab === 'letter'){
+      const key = groupKeyForTimestamp(item.createdAt || Date.now());
+      if(key) letterExpandedGroups.add(key);
+    } else if(tab === 'board'){
+      const key = groupKeyForTimestamp(item.createdAt || Date.now());
+      if(key) boardExpandedGroups.add(key);
+    } else if(tab === 'wish' && item.done){
+      showDoneWishes = true;
+    } else if(tab === 'schedule' && isPast(item)){
+      showPastSchedule = true;
+    }
+  }
+
+  // 최근 개수/기간 제한(복작방·위시·함께한날·편지 최근 100개, 일정 최근 3개월) 밖에
+  // 있는 오래된 알림 대상은 로컬 배열에 없어서 화면에 못 그려짐 - 그 문서 하나만
+  // Firestore에서 개별로 가져와 임시로 배열에 끼워넣고, 그 문서만 따로 실시간 구독해서
+  // 보는 동안 수정·삭제가 반영되게 함. "임시"이므로 다 보고 나면(탭 이탈/다른 대상으로
+  // 이동/로그아웃/삭제됨) 반드시 배열에서도 실제로 빼줘야 함 - clearOpenedNotificationTarget()
+  // 하나로 그 정리를 전부 처리함(구독 해제 + 배열에서 제거 + 다시 그리기).
+  let openedNotificationTarget = null; // { tab, item }
+  let openedNotificationTargetUnsubscribe = null;
+  function clearOpenedNotificationTarget(){
+    if(openedNotificationTargetUnsubscribe){
+      openedNotificationTargetUnsubscribe();
+      openedNotificationTargetUnsubscribe = null;
+    }
+    const target = openedNotificationTarget;
+    openedNotificationTarget = null;
+    if(!target) return;
+    const access = TAB_DATA_ACCESS[target.tab];
+    if(!access) return;
+    access.setArr(access.getArr().filter(item => item.id !== target.item.id));
+    access.render();
+  }
+  function preserveOpenedNotificationTarget(tab, items){
+    const target = openedNotificationTarget;
+    if(!target || target.tab !== tab) return items;
+    if(items.some(item => item.id === target.item.id)){
+      // 일반 최근 목록 구독에 정식으로 들어왔으니, 더 이상 "임시"가 아님 -
+      // 보호 표시와 개별 구독만 해제하고 배열은 그대로 둠(이미 items 안에 있으니까)
+      if(openedNotificationTargetUnsubscribe){
+        openedNotificationTargetUnsubscribe();
+        openedNotificationTargetUnsubscribe = null;
+      }
+      openedNotificationTarget = null;
+      return items;
+    }
+    return [...items, target.item];
+  }
+  async function ensureNotificationTargetLoaded(tab, itemId){
+    const access = TAB_DATA_ACCESS[tab];
+    if(!access) return;
+    if(access.getArr().some(it => it.id === itemId)) return; // 이미 있으면 할 일 없음
+    try{
+      const snap = await db.collection(access.col).doc(itemId).get();
+      if(!snap.exists) return;
+      // 조회하는 사이 실시간 구독으로 이미 들어왔을 수도 있으니 다시 한번 확인
+      const latestArr = access.getArr();
+      if(latestArr.some(it => it.id === itemId)) return;
+      const fetchedItem = { id: snap.id, ...snap.data() };
+      access.setArr([...latestArr, fetchedItem]);
+      // 혹시 전에 다른 임시 대상을 보호하고 있었다면 먼저 정리
+      if(openedNotificationTarget && openedNotificationTarget.item.id !== itemId){
+        clearOpenedNotificationTarget();
+      }
+      openedNotificationTarget = { tab, item: fetchedItem };
+      expandGroupsForItem(tab, fetchedItem);
+      access.render();
+      // 댓글/답글 알림이었다면, 이제 막 로드된 게시물에도 댓글창 열림 상태를 반영
+      if(pendingScrollTarget && pendingScrollTarget.tab === tab && pendingScrollTarget.itemId === itemId && pendingScrollTarget.commentTs && TAB_TO_COL[tab]){
+        openCommentSections.add(`${TAB_TO_COL[tab]}-${itemId}`);
+      }
+      tryConsumePendingScroll(); // 방금 그려졌으니 바로 한 번 더 시도
+
+      // 이 문서 하나만 따로 실시간 구독 - 보는 동안 수정되면 화면도 갱신되고,
+      // 삭제되면 화면에서 지우고 안내함
+      openedNotificationTargetUnsubscribe = db.collection(access.col).doc(itemId).onSnapshot(snap2=>{
+        if(!openedNotificationTarget || openedNotificationTarget.tab !== tab || openedNotificationTarget.item.id !== itemId) return;
+        if(!snap2.exists){
+          clearOpenedNotificationTarget();
+          showPushToast('삭제된 게시물이야', null, null, null, null, true);
+          return;
+        }
+        const updatedItem = { id: snap2.id, ...snap2.data() };
+        openedNotificationTarget.item = updatedItem;
+        access.setArr(access.getArr().map(item => item.id === itemId ? updatedItem : item));
+        expandGroupsForItem(tab, updatedItem);
+        access.render();
+      }, err => console.error('알림 대상 개별 구독 실패', err));
+    }catch(e){
+      console.error('알림 대상 개별 조회 실패', e);
+    }
+  }
+
   function navigateToItem(tab, itemId, commentTs, replyTs){
+    // 오늘의 질문 알림은 게시글 문서가 아니라 홈 카드(또는 지난 질문 아카이브)를 가리킴.
+    // itemId가 "daily-question" 또는 "daily-question-2026-07-14"처럼 날짜가 붙어서 옴.
+    // (콜론이 아니라 대시로 구분함 - 콜론은 URL 해시를 나눌 때 구분자와 겹쳐서 날짜가
+    // commentTs 자리로 밀려버리는 문제가 있었음)
+    const itemIdStr = String(itemId);
+    const datedQuestionMatch = itemIdStr.match(/^daily-question-(\d{4}-\d{2}-\d{2})$/);
+    if(tab === 'home' && (itemIdStr === 'daily-question' || datedQuestionMatch)){
+      const datePart = datedQuestionMatch ? datedQuestionMatch[1] : null;
+      if(!datePart || datePart === localDateStr()){
+        // 날짜가 없거나(예전 알림) 오늘 질문이면 기존처럼 홈 카드로 스크롤
+        if(!activateTab('home')) return false;
+        const card = document.getElementById('dailyQuestionCard');
+        if(card) scrollToEl(card);
+      } else {
+        // 지난 질문이면 홈으로 전환한 뒤(아카이브를 닫아도 자연스럽게 홈에 있도록)
+        // 아카이브를 열고 그 날짜 행으로 바로 스크롤+펼침
+        if(!activateTab('home')) return false;
+        openDailyQuestionArchive(datePart);
+      }
+      return true;
+    }
+    // 상태 변경/반응 알림도 마찬가지로, 홈의 오늘의 우리 카드까지 정확히 스크롤함
+    if(tab === 'home' && itemId === 'today-us'){
+      if(!activateTab('home')) return false;
+      const card = document.getElementById('todayUsCard');
+      if(card) scrollToEl(card);
+      return true;
+    }
+
     if(!activateTab(tab)) return false; // 작성 중인 내용 때문에 이동이 취소됐으면 여기서 멈춤
 
     // 그 탭에 필터가 걸려있으면(예: 특정 사람 것만 보기), 알림으로 찾아온 게시글이
@@ -4597,19 +4804,20 @@ function startWatchers(){
     else if(tab === 'board') item = boards.find(x=>x.id===itemId);
     else if(tab === 'letter') item = letters.find(x=>x.id===itemId);
 
+    // 지금 이동하려는 대상이 이전에 개별 조회해서 보호해두던 것과 다르면, 그 보호는 해제함
+    // (더 이상 보고 있는 대상이 아니니 다음 실시간 갱신 때 굳이 지켜줄 필요 없음)
+    if(openedNotificationTarget && !(openedNotificationTarget.tab === tab && openedNotificationTarget.item.id === itemId)){
+      clearOpenedNotificationTarget();
+    }
+
     if(item){
-      if(tab === 'datelog'){
-        const key = groupKeyForTimestamp(new Date(item.date + 'T00:00:00').getTime());
-        if(key) dateLogExpandedGroups.add(key);
-      } else if(tab === 'letter'){
-        const key = groupKeyForTimestamp(item.createdAt || Date.now());
-        if(key) letterExpandedGroups.add(key);
-      } else if(tab === 'board'){
-        const key = groupKeyForTimestamp(item.createdAt || Date.now());
-        if(key) boardExpandedGroups.add(key);
-      } else if(tab === 'wish' && item.done){
-        showDoneWishes = true;
-      }
+      expandGroupsForItem(tab, item);
+    } else {
+      // 최근 개수/기간 제한(예: 복작방 최근 100개, 일정 최근 3개월) 밖에 있는
+      // 오래된 알림 대상일 수 있음 - 서버에서 그 문서 하나만 개별로 가져와서 임시로
+      // 목록에 끼워넣음. 백그라운드로 진행하고, 없으면(진짜 삭제) 기존 확인 절차가
+      // 알아서 "삭제된 게시물이야" 안내로 이어짐
+      ensureNotificationTargetLoaded(tab, itemId);
     }
 
     // 댓글/답글 알림으로 들어온 경우 -> 댓글창도 미리 열려있게 기억
