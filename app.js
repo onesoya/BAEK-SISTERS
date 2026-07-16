@@ -135,7 +135,7 @@ db.enablePersistence()
 
   // 코드 새로 줄 때마다 이 값 올림 - 홈 화면 맨 아래에 표시돼서, 최신 버전이 실제로
   // 적용됐는지 앱만 열어봐도 바로 확인할 수 있게 해둠.
-  const APP_VERSION = '2026.07.15-8';
+  const APP_VERSION = '2026.07.16-1';
   function colorKeyOf(name){ return PERSON_COLOR[name] || 'yellow'; }
   
   async function searchLocations(query){
@@ -3788,7 +3788,7 @@ function startWatchers(){
     renderPhotoPreviewGrid('dailyPhotoPreviewWrap', ()=>pendingDailyPhotoPhotos, (v)=>{ pendingDailyPhotoPhotos = v; });
     document.getElementById('dailyPhotoModal').classList.remove('hidden');
   }
-  // ---- 오늘의 한 장 전용 정사각형 자르기 (팬 + 핀치줌/휠줌 후 캔버스로 정확히 잘라냄) ----
+  // ---- 오늘의 한 장 전용 16:9 자르기 (팬 + 핀치줌/휠줌 후 캔버스로 정확히 잘라냄) ----
   (function(){
     const modal = document.getElementById('dailyPhotoCropModal');
     const viewport = document.getElementById('cropViewport');
@@ -3801,7 +3801,8 @@ function startWatchers(){
     let baseCoverScale = 1;   // 원본 1px당 baseW/baseH 배율
     let userZoom = 1;         // 사용자가 추가로 확대한 배율 (1 이상)
     let panX = 0, panY = 0;
-    let viewportSize = 0;
+    let viewportWidth = 0;
+    let viewportHeight = 0;
 
     let isPanning = false, isPinching = false;
     let startPanX = 0, startPanY = 0, startTouchX = 0, startTouchY = 0;
@@ -3809,8 +3810,8 @@ function startWatchers(){
 
     function clampPan(){
       const halfW = (baseW * userZoom) / 2, halfH = (baseH * userZoom) / 2;
-      const maxPanX = Math.max(0, halfW - viewportSize / 2);
-      const maxPanY = Math.max(0, halfH - viewportSize / 2);
+      const maxPanX = Math.max(0, halfW - viewportWidth / 2);
+      const maxPanY = Math.max(0, halfH - viewportHeight / 2);
       panX = Math.min(maxPanX, Math.max(-maxPanX, panX));
       panY = Math.min(maxPanY, Math.max(-maxPanY, panY));
     }
@@ -3836,9 +3837,11 @@ function startWatchers(){
           naturalW = img.naturalWidth;
           naturalH = img.naturalHeight;
           if(!naturalW || !naturalH){ fail(); return; }
-          // 테두리를 제외한 실제 내부 너비 사용
-          viewportSize = viewport.clientWidth;
-          baseCoverScale = viewportSize / Math.min(naturalW, naturalH);
+          // 테두리를 제외한 실제 내부 너비/높이 사용
+          viewportWidth = viewport.clientWidth;
+          viewportHeight = viewport.clientHeight;
+          // 가로·세로 모두 빈 공간 없이 채우는 cover 배율
+          baseCoverScale = Math.max(viewportWidth / naturalW, viewportHeight / naturalH);
           baseW = naturalW * baseCoverScale;
           baseH = naturalH * baseCoverScale;
           userZoom = 1; panX = 0; panY = 0;
@@ -3933,17 +3936,20 @@ function startWatchers(){
       confirmBtn.disabled = true;
 
       const totalScale = baseCoverScale * userZoom;
-      const renderedLeft = viewportSize/2 + panX - (baseW * userZoom)/2;
-      const renderedTop = viewportSize/2 + panY - (baseH * userZoom)/2;
+      const renderedLeft = viewportWidth/2 + panX - (baseW * userZoom)/2;
+      const renderedTop = viewportHeight/2 + panY - (baseH * userZoom)/2;
       const srcX = -renderedLeft / totalScale;
       const srcY = -renderedTop / totalScale;
-      const srcSize = viewportSize / totalScale;
+      const srcWidth = viewportWidth / totalScale;
+      const srcHeight = viewportHeight / totalScale;
 
-      const outputSize = 900;
+      // 기존 900×900과 전체 픽셀 수가 거의 같은 16:9 크기
+      const outputWidth = 1200;
+      const outputHeight = 675;
       const canvas = document.createElement('canvas');
-      canvas.width = outputSize; canvas.height = outputSize;
+      canvas.width = outputWidth; canvas.height = outputHeight;
       const ctx = canvas.getContext('2d');
-      ctx.drawImage(img, srcX, srcY, srcSize, srcSize, 0, 0, outputSize, outputSize);
+      ctx.drawImage(img, srcX, srcY, srcWidth, srcHeight, 0, 0, outputWidth, outputHeight);
 
       const isPng = pendingCropFile.type === 'image/png';
       canvas.toBlob((blob)=>{
