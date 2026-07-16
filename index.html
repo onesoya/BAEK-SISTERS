@@ -94,7 +94,7 @@
       <div class="section-title">일정 <button type="button" class="anniv-manage-btn" id="annivAddBtn">🎉 기념일 관리</button></div>
       <div class="chip-toggle-row" id="scheduleFilterRow" style="margin-bottom:12px;"></div>
       <div class="calendar-card" id="scheduleCalendar"></div>
-      <div class="add-card">
+      <div class="add-card" id="scheduleForm">
         <div class="datetime-row">
           <div class="field-group date-field">
             <label class="field-label">📅 날짜</label>
@@ -120,6 +120,22 @@
           <input type="text" id="schedTitle" placeholder="무슨 일정이야?" style="padding-right:34px;">
           <button type="button" class="input-clear-btn" data-clear-input="schedTitle">✕</button>
         </div>
+        <div class="schedule-source-wish hidden" id="schedSourceWishRow">
+          <div>
+            <span class="schedule-source-label">💫 관련 위시</span>
+            <strong id="schedSourceWishTitle"></strong>
+          </div>
+          <button type="button" id="schedSourceWishClearBtn">연결 해제</button>
+        </div>
+        <div class="add-row">
+          <div style="position:relative; flex:1;">
+            <input type="text" id="schedLocation" placeholder="📍 장소 검색 (선택)" style="padding-right:34px;">
+            <button type="button" class="input-clear-btn" data-clear-input="schedLocation">✕</button>
+          </div>
+          <button type="button" class="btn-photo" id="schedLocationSearchBtn" style="width:auto;flex-shrink:0;padding:9px 14px;">🔍 검색</button>
+        </div>
+        <div class="location-results hidden" id="schedLocationResults"></div>
+        <div class="field-label hidden" id="schedLocationStatus" style="margin:-4px 0 8px 2px;"></div>
         <button type="button" class="date-plan-toggle" id="schedDatePlanToggle"><svg viewBox="0 0 7 6" width="16" height="14" shape-rendering="crispEdges" style="display:inline-block;vertical-align:middle;"><rect x="1" y="0" width="2" height="1" fill="#9B7FE0"/><rect x="4" y="0" width="2" height="1" fill="#9B7FE0"/><rect x="0" y="1" width="7" height="1" fill="#9B7FE0"/><rect x="0" y="2" width="7" height="1" fill="#9B7FE0"/><rect x="1" y="3" width="5" height="1" fill="#9B7FE0"/><rect x="2" y="4" width="3" height="1" fill="#9B7FE0"/><rect x="3" y="5" width="1" height="1" fill="#9B7FE0"/></svg> 데이트 일정으로 표시</button>
         <div class="add-row">
           <textarea id="schedMemo" placeholder="메모 (선택)"></textarea>
@@ -211,6 +227,12 @@
         <div class="add-row" style="position:relative;">
           <input type="text" id="dateLogTitle" placeholder="제목" style="padding-right:34px;">
           <button type="button" class="input-clear-btn" data-clear-input="dateLogTitle">✕</button>
+        </div>
+        <div class="schedule-source-wish hidden" id="dateLogSourceScheduleRow">
+          <div>
+            <span class="schedule-source-label">🗓️ 관련 일정</span>
+            <strong id="dateLogSourceScheduleTitle"></strong>
+          </div>
         </div>
         <div class="add-row">
           <div style="position:relative; flex:1;">

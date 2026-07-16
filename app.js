@@ -30,6 +30,9 @@ db.enablePersistence()
   let profiles = {}; // { name: { colorKey, status:{text,emoji,updatedAt} } }
   let pendingWishPhotos = [], pendingDateLogPhotos = [], pendingLetterPhotos = [], pendingBoardPhotos = [];
   let pendingDateLogGeo = null;
+  let pendingScheduleGeo = null;
+  let scheduleSourceWish = null; // 위시에서 시작한 일정이면 { id, title }
+  let dateLogSourceSchedule = null; // 일정에서 시작한 기록이면 { id, title, sourceWishId, date, time, endDate, endTime, location, lat, lng }
   let searchQuery = '';
 
   const USER_AGENT = navigator.userAgent || '';
@@ -135,7 +138,7 @@ db.enablePersistence()
 
   // 코드 새로 줄 때마다 이 값 올림 - 홈 화면 맨 아래에 표시돼서, 최신 버전이 실제로
   // 적용됐는지 앱만 열어봐도 바로 확인할 수 있게 해둠.
-  const APP_VERSION = '2026.07.16-1';
+  const APP_VERSION = '2026.07.16-4';
   function colorKeyOf(name){ return PERSON_COLOR[name] || 'yellow'; }
   
   async function searchLocations(query){
@@ -1117,9 +1120,60 @@ async function uploadPhotos(photosArray, onProgress) {
       popupAnchor: [0, -22]
     });
   }
-  function openDateMap(){
+  // 같은 일정 장소를 그대로 상속해서 여러 명이 기록하면 좌표가 완전히 같아져 마커가 겹칠 수 있음 -
+  // 좌표가 같은(소수점 5자리까지) 기록들을 한 그룹으로 묶어서 마커 하나 + 목록 팝업으로 보여줌
+  function mapGroupKey(item){
+    if(typeof item.lat !== 'number' || typeof item.lng !== 'number') return null;
+    return item.lat.toFixed(5) + ':' + item.lng.toFixed(5);
+  }
+  function renderDateMapMarkers(pts){
+    const groups = new Map();
+    pts.forEach(item=>{
+      const key = mapGroupKey(item);
+      if(!key) return;
+      if(!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(item);
+    });
+    if(dateLogMarkersLayer) dateLogMapInstance.removeLayer(dateLogMarkersLayer);
+    dateLogMarkersLayer = L.layerGroup();
+    groups.forEach(items=>{
+      const first = items[0];
+      const marker = L.marker([first.lat, first.lng], { icon: heartMarkerIcon() });
+      if(items.length === 1){
+        const photo = getItemPhotos(first)[0];
+        marker.bindPopup(
+          `<b>${escapeHTML(first.title)}</b><br><span style="color:#8A7A86;font-size:11px;">${fmtShortDate(first.date)} · ${first.author||''}</span>` +
+          (photo ? `<br><img src="${photo}" style="width:110px;border-radius:8px;margin-top:4px;">` : '')
+        );
+      } else {
+        // 같은 좌표에 여러 기록 - 하나의 팝업 안에 각자의 기록을 목록으로
+        const placeName = first.location || first.title;
+        const listHTML = items.map(item=>{
+          const photo = getItemPhotos(item)[0];
+          return `<div style="display:flex;gap:6px;align-items:center;margin-top:6px;">
+            ${photo ? `<img src="${photo}" style="width:34px;height:34px;border-radius:6px;object-fit:cover;flex-shrink:0;">` : ''}
+            <div>
+              <div style="font-size:12px;color:#4A3548;">${escapeHTML(item.author||'')}의 기록</div>
+              <div style="font-size:11px;color:#8A7A86;">${fmtShortDate(item.date)}</div>
+            </div>
+          </div>`;
+        }).join('');
+        marker.bindPopup(`<b>${escapeHTML(placeName)}</b>${listHTML}`);
+      }
+      marker.addTo(dateLogMarkersLayer);
+    });
+    dateLogMarkersLayer.addTo(dateLogMapInstance);
+    dateLogMapInstance.invalidateSize();
+    if(pts.length > 0){
+      const bounds = L.latLngBounds(pts.map(p=>[p.lat, p.lng]));
+      dateLogMapInstance.fitBounds(bounds, { padding:[40,40], maxZoom:15 });
+    } else {
+      dateLogMapInstance.setView([37.5665, 126.9780], 11);
+    }
+  }
+  async function openDateMap(){
     document.getElementById('dateMapModal').classList.remove('hidden');
-    setTimeout(()=>{
+    setTimeout(async ()=>{
       if(!dateLogMapInstance){
         dateLogMapInstance = L.map('dateMapContainer', { attributionControl: true });
         L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
@@ -1128,25 +1182,25 @@ async function uploadPhotos(photosArray, onProgress) {
           subdomains: 'abcd'
         }).addTo(dateLogMapInstance);
       }
-      const pts = dateLogs.filter(d => typeof d.lat === 'number' && typeof d.lng === 'number');
-      if(dateLogMarkersLayer) dateLogMapInstance.removeLayer(dateLogMarkersLayer);
-      dateLogMarkersLayer = L.layerGroup();
-      pts.forEach(item=>{
-        const photo = getItemPhotos(item)[0];
-        const marker = L.marker([item.lat, item.lng], { icon: heartMarkerIcon() });
-        marker.bindPopup(
-          `<b>${escapeHTML(item.title)}</b><br><span style="color:#8A7A86;font-size:11px;">${fmtShortDate(item.date)} · ${item.author||''}</span>` +
-          (photo ? `<br><img src="${photo}" style="width:110px;border-radius:8px;margin-top:4px;">` : '')
-        );
-        marker.addTo(dateLogMarkersLayer);
-      });
-      dateLogMarkersLayer.addTo(dateLogMapInstance);
-      dateLogMapInstance.invalidateSize();
-      if(pts.length > 0){
-        const bounds = L.latLngBounds(pts.map(p=>[p.lat, p.lng]));
-        dateLogMapInstance.fitBounds(bounds, { padding:[40,40], maxZoom:15 });
-      } else {
-        dateLogMapInstance.setView([37.5665, 126.9780], 11);
+      // 우선 로컬(최근 100개)로 바로 한 번 그려서 지도가 빨리 뜨게 함
+      let pts = dateLogs.filter(d => typeof d.lat === 'number' && typeof d.lng === 'number');
+      renderDateMapMarkers(pts);
+
+      // 최근 100개 제한과 무관하게, 전체 기록을 별도로 다시 조회해서 갱신
+      // (사람별 기록이 쌓이면 100개가 금방 차서 오래된 좌표가 누락될 수 있음)
+      try{
+        const snap = await db.collection('datelog').get();
+        const allPts = [];
+        snap.forEach(doc=>{
+          const data = doc.data();
+          if(typeof data.lat === 'number' && typeof data.lng === 'number'){
+            allPts.push({ id: doc.id, ...data });
+          }
+        });
+        if(dateLogMapInstance) renderDateMapMarkers(allPts);
+      }catch(e){
+        console.error('지도 전체 좌표 조회 실패', e);
+        // 실패해도 이미 로컬 기준으로 그려둔 지도는 그대로 보여줌
       }
     }, 50);
   }
@@ -1156,24 +1210,39 @@ async function uploadPhotos(photosArray, onProgress) {
   });
 
 
+
   function scheduleCardHTML(item){
     const d = fmtDate(item.date);
     const extraLabel = formatScheduleRange(item);
     const hasExtra = extraLabel !== fmtShortDate(item.date);
     const participants = getDisplayParticipants(item);
     const joined = identity && participants.includes(identity);
+    const canWriteMemory = canWriteDateLogForSchedule(item);
+    const linkedDateLogs = item.isDate ? findDateLogsForSchedule(item.id) : [];
+    const myDateLog = linkedDateLogs.find(log => log.author === identity) || null;
+    const recordedNames = [...new Set(linkedDateLogs.map(log => log.author).filter(Boolean))];
     return `<div class="item-card ${isPast(item)?'past':''} ${item.isDate?'date-plan-card':''}" data-item-id="${item.id}">
       <div class="date-badge"><div class="day">${d.day}</div><div class="mon">${d.mon}</div></div>
       <div class="item-body">
         <div class="item-title">${escapeHTML(item.title)}${item.isDate ? ' ' + pixelHeartSVG(true, 16) : ''}</div>
         ${hasExtra ? `<div class="item-memo">${extraLabel}</div>` : ''}
         ${item.memo ? `<div class="item-memo">${escapeHTML(item.memo)}</div>` : ''}
+        ${item.location ? `<div class="item-memo">📍 ${escapeHTML(item.location)}</div>` : ''}
         <div class="item-meta">${authorTagHTML(item.author)}</div>
+        ${item.sourceWishId ? `<button type="button" class="source-link-btn" data-open-source-wish="${item.sourceWishId}">💫 관련 위시 보기</button>` : ''}
         ${item.isDate ? `
           <div class="home-next-participants">
             ${participants.map(p => `<span class="recipient-chip color-${colorKeyOf(p)}">${p}</span>`).join('')}
           </div>
           ${!isPast(item) && !isMine(item) ? `<button type="button" class="date-plan-toggle ${joined?'active':''}" data-join-schedule="${item.id}" data-joined="${joined}" style="margin-top:8px;">${joined ? '참여 취소' : '참여할래'}</button>` : ''}
+          ${recordedNames.length > 0 ? `
+            <div class="schedule-memory-people">기록을 남긴 사람
+              <span class="home-next-participants">${recordedNames.map(n => `<span class="recipient-chip color-${colorKeyOf(n)}">${escapeHTML(n)}</span>`).join('')}</span>
+            </div>
+          ` : ''}
+          ${canWriteMemory ? `
+            <button type="button" class="schedule-memory-btn ${myDateLog ? 'completed' : ''}" data-schedule-memory="${item.id}">${myDateLog ? '💛 내 기록 보기' : '✍️ 내 기록 남기기'}</button>
+          ` : ''}
         ` : ''}
       </div>
       ${isMine(item) ? `<button class="edit-btn" data-edit-schedule="${item.id}">${pixelEditSVG()}</button>` : ''}
@@ -1413,6 +1482,7 @@ function renderCalendar(){
     const isLiked = identity && likes.includes(identity);
     const likeIcon = pixelHeartSVG(isLiked);
     const commentCount = totalCommentCount(item.comments);
+    const linkedSchedule = findScheduleForWish(item.id);
     return `<div class="wish-card ${item.done?'wish-done':''}" data-item-id="${item.id}">
       <div class="wish-content">
         <div class="post-summary" data-post-toggle="${item.id}">
@@ -1423,6 +1493,7 @@ function renderCalendar(){
           ${item.body ? `<div class="wish-body">${escapeHTML(item.body)}</div>` : ''}
           ${cardPhotosHTML(item)}
           ${item.link ? `<a class="wish-link" href="${escapeHTML(item.link)}" target="_blank" rel="noopener">🔗 ${escapeHTML(linkHost(item.link))}</a>` : ''}
+          <button type="button" class="source-link-btn" data-plan-or-view-wish="${item.id}">${linkedSchedule ? '📅 일정 보기' : '📅 날짜 잡기'}</button>
           <div class="wish-footer">
             <div style="display:flex;align-items:center;gap:6px;justify-content:flex-end;width:100%;">
               <button class="wish-check ${item.done?'checked':''}" data-check-wish="${item.id}">${item.done ? '✓ 완료함' : '완료로 표시'}</button>
@@ -1508,6 +1579,8 @@ function renderCalendar(){
           ${(item.participants && item.participants.length) ? `<div class="letter-recipients" style="margin-top:6px;">${item.participants.map(p=>`<span class="recipient-chip color-${colorKeyOf(p)}">${p}</span>`).join('')}</div>` : ''}
           ${item.memo ? `<div class="item-memo">${escapeHTML(item.memo)}</div>` : ''}
           ${cardPhotosHTML(item)}
+          ${item.sourceScheduleId ? `<button type="button" class="source-link-btn" data-open-source-schedule="${item.sourceScheduleId}">🗓️ 관련 일정 보기</button>` : ''}
+          ${item.sourceWishId ? `<button type="button" class="source-link-btn" data-open-source-wish="${item.sourceWishId}">💫 관련 위시 보기</button>` : ''}
 
           <div class="reaction-row">
             <div style="display:flex; gap:10px;">
@@ -2181,7 +2254,12 @@ function renderLetters() {
     switch(tabName){
       case 'schedule': return document.getElementById('schedTitle').value.trim() !== '';
       case 'wish': return document.getElementById('wishTitle').value.trim() !== '' || document.getElementById('wishBody').value.trim() !== '';
-      case 'datelog': return document.getElementById('dateLogTitle').value.trim() !== '';
+      case 'datelog': return !!dateLogSourceSchedule || !!activeDateLogLockScheduleId
+        || document.getElementById('dateLogTitle').value.trim() !== ''
+        || document.getElementById('dateLogMemo').value.trim() !== ''
+        || document.getElementById('dateLogLocation').value.trim() !== ''
+        || pendingDateLogPhotos.length > 0
+        || dateLogSelectedParticipants.length > 0;
       case 'letter': return document.getElementById('letterBody').value.trim() !== '';
       case 'board': return document.getElementById('boardBody').value.trim() !== '' || pendingBoardPhotos.length > 0;
       default: return false;
@@ -2242,6 +2320,10 @@ function renderLetters() {
       // (중앙 정리 함수를 써야 실제 배열에서도 빠지고 개별 구독도 해제됨)
       if(openedNotificationTarget && openedNotificationTarget.tab === currentTab){
         clearOpenedNotificationTarget();
+      }
+      // 일정에 연결된 기록을 쓰다가 탭을 완전히 떠나면(취소/저장 없이), 작성 잠금도 해제
+      if(currentTab === 'datelog' && activeDateLogLockScheduleId && typeof releaseDateLogDraftLock === 'function'){
+        releaseDateLogDraftLock();
       }
     }
     document.querySelectorAll('.tab-panel').forEach(p=>p.classList.remove('active'));
@@ -2568,8 +2650,15 @@ function renderLetters() {
     document.getElementById('schedTime').value = item.time || '';
     document.getElementById('schedTitle').value = item.title;
     document.getElementById('schedMemo').value = item.memo || '';
+    document.getElementById('schedLocation').value = item.location || '';
+    pendingScheduleGeo = (typeof item.lat === 'number' && typeof item.lng === 'number') ? { lat: item.lat, lng: item.lng } : null;
+    document.getElementById('schedLocationStatus').classList.add('hidden');
+    setScheduleSourceWish(item.sourceWishId ? {
+      id: item.sourceWishId,
+      title: (wishes.find(w => w.id === item.sourceWishId) || {}).title || item.sourceWishTitle || '하고 싶은 일'
+    } : null);
     setDatePlanToggle(!!item.isDate);
-    if(item.endDate && item.endDate !== item.date){
+    if(item.endDate){
       document.getElementById('schedEndDate').value = item.endDate;
       document.getElementById('schedEndTime').value = item.endTime || '';
       setRangeToggleState('schedEndDateRow', 'schedRangeToggleBtn', true);
@@ -2589,6 +2678,12 @@ function renderLetters() {
     document.getElementById('schedTime').value='';
     document.getElementById('schedEndDate').value='';
     document.getElementById('schedEndTime').value='';
+    document.getElementById('schedLocation').value='';
+    document.getElementById('schedLocationResults').classList.add('hidden');
+    document.getElementById('schedLocationResults').innerHTML = '';
+    document.getElementById('schedLocationStatus').classList.add('hidden');
+    pendingScheduleGeo = null;
+    setScheduleSourceWish(null);
     setRangeToggleState('schedEndDateRow', 'schedRangeToggleBtn', false);
     setDatePlanToggle(false);
     document.getElementById('schedDate').value = localDateStr();
@@ -2597,6 +2692,128 @@ function renderLetters() {
     clearDraftAutosave('draft_schedule');
   }
   document.getElementById('schedCancelBtn').addEventListener('click', resetScheduleForm);
+  document.getElementById('schedLocation').addEventListener('input', ()=>{
+    pendingScheduleGeo = null;
+    document.getElementById('schedLocationStatus').classList.add('hidden');
+  });
+  document.getElementById('schedLocation').addEventListener('keydown', (e)=>{
+    if(e.key === 'Enter'){
+      e.preventDefault();
+      e.target.blur();
+      setTimeout(()=>{ document.activeElement && document.activeElement.blur(); }, 0);
+      document.getElementById('schedLocationSearchBtn').click();
+    }
+  });
+  document.getElementById('schedLocationSearchBtn').addEventListener('click', async ()=>{
+    const query = document.getElementById('schedLocation').value.trim();
+    if(!query) return;
+    const resultsEl = document.getElementById('schedLocationResults');
+    document.getElementById('schedLocationStatus').classList.add('hidden');
+    resultsEl.classList.remove('hidden');
+    resultsEl.innerHTML = '';
+    showLoadingOverlay('장소 찾는 중이야...');
+    let results;
+    try{
+      results = await searchLocations(query);
+    } finally {
+      hideLoadingOverlay();
+    }
+    if(results.length === 0){
+      resultsEl.innerHTML = `
+        <div class="location-result-item">검색 결과가 없어. 다른 이름으로 시도해봐.</div>
+        <button type="button" class="location-cancel-btn" id="schedLocationCancelBtn">✕ 취소</button>
+      `;
+      document.getElementById('schedLocationCancelBtn').addEventListener('click', ()=>{
+        resultsEl.classList.add('hidden');
+        resultsEl.innerHTML = '';
+        document.getElementById('schedLocation').value = '';
+        pendingScheduleGeo = null;
+        const statusEl = document.getElementById('schedLocationStatus');
+        statusEl.classList.add('hidden');
+        statusEl.textContent = '';
+      });
+      return;
+    }
+    resultsEl.innerHTML = results.map((r,i)=>`
+      <div class="location-result-item" data-idx="${i}">
+        <div class="location-result-name">${escapeHTML(r.name)}</div>
+        <div class="location-result-addr">${escapeHTML(r.address || '')}</div>
+      </div>
+    `).join('') + `<button type="button" class="location-cancel-btn" id="schedLocationCancelBtn">✕ 취소</button>`;
+    document.getElementById('schedLocationCancelBtn').addEventListener('click', ()=>{
+      resultsEl.classList.add('hidden');
+      resultsEl.innerHTML = '';
+      document.getElementById('schedLocation').value = '';
+      pendingScheduleGeo = null;
+      const statusEl = document.getElementById('schedLocationStatus');
+      statusEl.classList.add('hidden');
+      statusEl.textContent = '';
+    });
+    resultsEl.querySelectorAll('.location-result-item[data-idx]').forEach(el=>{
+      el.addEventListener('click', ()=>{
+        const r = results[Number(el.dataset.idx)];
+        pendingScheduleGeo = { lat: r.lat, lng: r.lng };
+        document.getElementById('schedLocation').value = r.name;
+        resultsEl.classList.add('hidden');
+        resultsEl.innerHTML = '';
+        const statusEl = document.getElementById('schedLocationStatus');
+        statusEl.classList.remove('hidden');
+        statusEl.textContent = `✅ 이 장소로 선택했어: ${r.name}`;
+        statusEl.style.color = '#4A9B6E';
+      });
+    });
+  });
+
+  // ---- 위시 → 일정 연결 ----
+  function setScheduleSourceWish(wish){
+    scheduleSourceWish = wish ? { id: wish.id, title: wish.title || '하고 싶은 일' } : null;
+    const row = document.getElementById('schedSourceWishRow');
+    const title = document.getElementById('schedSourceWishTitle');
+    row.classList.toggle('hidden', !scheduleSourceWish);
+    title.textContent = scheduleSourceWish ? scheduleSourceWish.title : '';
+  }
+  document.getElementById('schedSourceWishClearBtn').addEventListener('click', ()=>{
+    setScheduleSourceWish(null);
+  });
+  // 이 위시로 이미 만들어둔 일정이 있는지 확인 (로컬 우선, 없으면 서버에서 한 번 더)
+  function findScheduleForWish(wishId){
+    return schedule.filter(item => item.sourceWishId === wishId)
+      .sort((a,b) => (b.createdAt||0) - (a.createdAt||0))[0] || null;
+  }
+  async function getScheduleForWish(wishId){
+    const localItem = findScheduleForWish(wishId);
+    if(localItem) return localItem;
+    const snap = await db.collection('schedule').where('sourceWishId', '==', wishId).limit(1).get({ source: 'server' });
+    if(snap.empty) return null;
+    const doc = snap.docs[0];
+    const item = { id: doc.id, ...doc.data() };
+    if(!schedule.some(s => s.id === item.id)) schedule = [...schedule, item];
+    return item;
+  }
+  async function startScheduleFromWish(wish){
+    if(!wish) return;
+    let linkedSchedule;
+    try{
+      linkedSchedule = await getScheduleForWish(wish.id);
+    }catch(e){
+      console.error('연결된 일정 확인 실패', e);
+      alert('연결된 일정이 있는지 확인하지 못했어. 인터넷 연결을 확인하고 다시 눌러줘.');
+      return;
+    }
+    if(linkedSchedule){
+      if(isPast(linkedSchedule)) showPastSchedule = true;
+      navigateToItem('schedule', linkedSchedule.id);
+      return;
+    }
+    if(!activateTab('schedule')) return;
+    resetScheduleForm();
+    setScheduleSourceWish(wish);
+    document.getElementById('schedTitle').value = wish.title || '';
+    document.getElementById('schedMemo').value = wish.body || '';
+    setDatePlanToggle(true); // 일반 일정이 아니라 데이트 일정으로 시작
+    const form = document.getElementById('scheduleForm');
+    if(form) form.scrollIntoView({behavior:'smooth', block:'start'});
+  }
   document.getElementById('schedAddBtn').addEventListener('click', async ()=>{
     const date = document.getElementById('schedDate').value;
     const title = document.getElementById('schedTitle').value.trim();
@@ -2607,19 +2824,38 @@ function renderLetters() {
     if(endDate && endDate < date) endDate = date;
     const endTime = endDate ? (document.getElementById('schedEndTime').value || null) : null;
     const isDate = schedIsDatePlan;
+    const location = document.getElementById('schedLocation').value.trim();
+
+    // 검색 결과를 직접 고르지 않았어도, 장소 이름만 써놨다면 저장 직전에 한 번 자동 검색
+    let geo = pendingScheduleGeo;
+    if(!geo && location){
+      showLoadingOverlay('장소 확인 중이야...');
+      try{
+        const results = await searchLocations(location);
+        geo = results[0] ? { lat: results[0].lat, lng: results[0].lng } : null;
+      } finally {
+        hideLoadingOverlay();
+      }
+    }
+
     try{
       if(editingScheduleId){
-        await db.collection('schedule').doc(editingScheduleId).update({ date, endDate, time, endTime, title, memo, isDate });
+        await db.collection('schedule').doc(editingScheduleId).update({
+          date, endDate, time, endTime, title, memo, isDate, location,
+          lat: geo ? geo.lat : null, lng: geo ? geo.lng : null,
+          sourceWishId: scheduleSourceWish ? scheduleSourceWish.id : null,
+          sourceWishTitle: scheduleSourceWish ? scheduleSourceWish.title : null,
+        });
         resetScheduleForm();
       } else {
-        await db.collection('schedule').doc(genId()).set({ date, endDate, time, endTime, title, memo, isDate, participants: [], author: identity, createdAt: Date.now() });
-        document.getElementById('schedTitle').value='';
-        document.getElementById('schedMemo').value='';
-        document.getElementById('schedTime').value='';
-        document.getElementById('schedEndDate').value='';
-        document.getElementById('schedEndTime').value='';
-        setRangeToggleState('schedEndDateRow', 'schedRangeToggleBtn', false);
-        setDatePlanToggle(false);
+        await db.collection('schedule').doc(genId()).set({
+          date, endDate, time, endTime, title, memo, isDate, location,
+          lat: geo ? geo.lat : null, lng: geo ? geo.lng : null,
+          sourceWishId: scheduleSourceWish ? scheduleSourceWish.id : null,
+          sourceWishTitle: scheduleSourceWish ? scheduleSourceWish.title : null,
+          participants: [], author: identity, createdAt: Date.now()
+        });
+        resetScheduleForm();
       }
     }catch(e){ console.error('일정 저장 실패', e); alert('저장에 실패했어. 인터넷 연결을 확인해줘.'); }
   });
@@ -2629,6 +2865,8 @@ function renderLetters() {
     const editId = editBtn && editBtn.dataset.editSchedule;
     const delId = delBtn && delBtn.dataset.delSchedule;
     const joinBtn = e.target.closest('[data-join-schedule]');
+    const memoryBtn = e.target.closest('[data-schedule-memory]');
+    const sourceWishBtn = e.target.closest('[data-open-source-wish]');
     if(editId){
       const item = schedule.find(s=>s.id===editId);
       if(item) startEditSchedule(item);
@@ -2645,6 +2883,11 @@ function renderLetters() {
       } else {
         openJoinModal(id);
       }
+    } else if(memoryBtn){
+      const item = schedule.find(s=>s.id===memoryBtn.dataset.scheduleMemory);
+      if(item) startDateLogFromSchedule(item);
+    } else if(sourceWishBtn){
+      navigateToItem('wish', sourceWishBtn.dataset.openSourceWish);
     }
   }
   let pendingJoinScheduleId = null;
@@ -2738,9 +2981,11 @@ function renderLetters() {
     const editBtn = e.target.closest('[data-edit-wish]');
     const delBtn = e.target.closest('[data-del-wish]');
     const checkBtn = e.target.closest('[data-check-wish]');
+    const planBtn = e.target.closest('[data-plan-or-view-wish]');
     const editId = editBtn && editBtn.dataset.editWish;
     const delId = delBtn && delBtn.dataset.delWish;
     const checkId = checkBtn && checkBtn.dataset.checkWish;
+    const planWishId = planBtn && planBtn.dataset.planOrViewWish;
 
     if (editId) startEditWish(wishes.find(s => s.id === editId));
     else if (delId) deleteItem('wishlist', delId, wishes.find(s => s.id === delId));
@@ -2750,6 +2995,8 @@ function renderLetters() {
       const willBeDone = !wishItem.done;
       if(willBeDone && !confirm('완료로 표시할까?')) return;
       db.collection('wishlist').doc(checkId).update({ done: willBeDone }).catch(err=>console.error(err));
+    } else if (planWishId) {
+      startScheduleFromWish(wishes.find(s => s.id === planWishId));
     }
   }
   document.getElementById('wishList').addEventListener('click', handleWishListClick);
@@ -2763,6 +3010,216 @@ function renderLetters() {
   let editingDatelogId = null;
   let dateLogSelectedParticipants = [];
   setupDraftAutosave('draft_datelog', ['dateLogTitle', 'dateLogMemo']);
+
+  // ---- 일정 → 기록 연결 (한 일정당 사람별로 기록 하나씩) ----
+  const DATELOG_LOCK_DURATION_MS = 10 * 60 * 1000; // 10분 - 정상 작성 중에는 1분마다 갱신되어 계속 연장됨
+
+  function canWriteDateLogForSchedule(item){
+    if(!item || !item.isDate || !item.date || item.date > localDateStr()) return false;
+    const participants = getDisplayParticipants(item);
+    return participants.includes(identity);
+  }
+  // 이 일정에 연결된 모든 사람의 기록
+  function findDateLogsForSchedule(scheduleId){
+    return dateLogs.filter(item => item.sourceScheduleId === scheduleId);
+  }
+  // 이 일정에 내가 남긴 기록
+  function findMyDateLogForSchedule(scheduleId){
+    return dateLogs.find(item => item.sourceScheduleId === scheduleId && item.author === identity) || null;
+  }
+  function dateLogDocIdForSchedule(scheduleId, author){
+    author = author || identity;
+    return `schedule_${scheduleId}_${encodeURIComponent(author)}`;
+  }
+  // 최근 100개 목록에 없을 수도 있으니, 내 기록의 고정 문서 ID로 서버에서 직접 확인
+  async function getMyDateLogForSchedule(scheduleId){
+    const localItem = findMyDateLogForSchedule(scheduleId);
+    if(localItem) return localItem;
+    const docId = dateLogDocIdForSchedule(scheduleId, identity);
+    const snap = await db.collection('datelog').doc(docId).get({ source: 'server' });
+    if(!snap.exists) return null;
+    const item = { id: snap.id, ...snap.data() };
+    if(!dateLogs.some(log => log.id === item.id)) dateLogs = [item, ...dateLogs];
+    return item;
+  }
+
+  // ---- 작성 중 잠금 (같은 사람이 여러 기기에서 동시에 쓰는 것만 방지 - 다른 사람끼리는 서로 독립적) ----
+  let activeDateLogLockScheduleId = null;
+  let activeDateLogLockToken = null;
+  let dateLogLockHeartbeat = null;
+  function dateLogLockId(scheduleId){
+    return `${scheduleId}_${encodeURIComponent(identity)}`;
+  }
+  async function acquireDateLogDraftLock(scheduleId){
+    const lockRef = db.collection('datelogDraftLocks').doc(dateLogLockId(scheduleId));
+    const recordRef = db.collection('datelog').doc(dateLogDocIdForSchedule(scheduleId, identity));
+    const deviceId = getOrCreateDeviceId();
+    const lockToken = genId();
+    const now = Date.now();
+    return db.runTransaction(async t => {
+      const recordSnap = await t.get(recordRef);
+      if(recordSnap.exists) return { acquired: false, existingId: recordRef.id };
+      const lockSnap = await t.get(lockRef);
+      if(lockSnap.exists){
+        const lock = lockSnap.data();
+        const isExpired = !lock.expiresAt || lock.expiresAt <= now;
+        const isMyLock = lock.owner === identity && lock.deviceId === deviceId;
+        if(!isExpired && !isMyLock) return { acquired: false, owner: lock.owner };
+      }
+      t.set(lockRef, { owner: identity, deviceId, lockToken, acquiredAt: now, expiresAt: now + DATELOG_LOCK_DURATION_MS });
+      return { acquired: true, owner: identity, lockToken };
+    });
+  }
+  async function renewDateLogDraftLock(scheduleId){
+    const lockRef = db.collection('datelogDraftLocks').doc(dateLogLockId(scheduleId));
+    const deviceId = getOrCreateDeviceId();
+    try{
+      return await db.runTransaction(async t => {
+        const snap = await t.get(lockRef);
+        if(!snap.exists) return false;
+        const lock = snap.data();
+        const isMyLock = lock.owner === identity && lock.deviceId === deviceId && lock.lockToken === activeDateLogLockToken;
+        if(!isMyLock) return false;
+        t.update(lockRef, { expiresAt: Date.now() + DATELOG_LOCK_DURATION_MS });
+        return true;
+      });
+    }catch(e){
+      console.warn('잠금 갱신 실패', e);
+      return true; // 일시적 네트워크 오류를 잠금 상실로 단정하지 않음
+    }
+  }
+  function stopDateLogLockHeartbeat(){
+    if(dateLogLockHeartbeat){ clearInterval(dateLogLockHeartbeat); dateLogLockHeartbeat = null; }
+  }
+  function startDateLogLockHeartbeat(scheduleId){
+    stopDateLogLockHeartbeat();
+    dateLogLockHeartbeat = setInterval(async ()=>{
+      if(activeDateLogLockScheduleId !== scheduleId) return;
+      const renewed = await renewDateLogDraftLock(scheduleId);
+      if(!renewed && activeDateLogLockScheduleId === scheduleId){
+        // 다른 기기가 잠금을 가져간 경우 - 조용히 정리(작성 중인 내용은 그대로 남겨둠, 저장 시 다시 확인함)
+        activeDateLogLockScheduleId = null;
+        activeDateLogLockToken = null;
+        stopDateLogLockHeartbeat();
+      }
+    }, 60000);
+  }
+  async function releaseDateLogDraftLock(){
+    const scheduleId = activeDateLogLockScheduleId;
+    const lockToken = activeDateLogLockToken;
+    activeDateLogLockScheduleId = null;
+    activeDateLogLockToken = null;
+    stopDateLogLockHeartbeat();
+    if(!scheduleId || !lockToken) return;
+    try{
+      const lockRef = db.collection('datelogDraftLocks').doc(dateLogLockId(scheduleId));
+      const deviceId = getOrCreateDeviceId();
+      await db.runTransaction(async t => {
+        const snap = await t.get(lockRef);
+        if(!snap.exists) return;
+        const lock = snap.data();
+        const isExactLock = lock.owner === identity && lock.deviceId === deviceId && lock.lockToken === lockToken;
+        if(isExactLock) t.delete(lockRef);
+      });
+    }catch(e){ console.warn('잠금 해제 실패', e); }
+  }
+  // 화면을 껐다 켜거나 사진 촬영 후 복귀하면 하트비트 타이머가 멈춰 있었을 수 있으므로 즉시 재확인
+  document.addEventListener('visibilitychange', ()=>{
+    if(document.visibilityState === 'visible' && activeDateLogLockScheduleId) renewDateLogDraftLock(activeDateLogLockScheduleId);
+  });
+  window.addEventListener('focus', ()=>{
+    if(activeDateLogLockScheduleId) renewDateLogDraftLock(activeDateLogLockScheduleId);
+  });
+  window.addEventListener('pageshow', ()=>{
+    if(activeDateLogLockScheduleId) renewDateLogDraftLock(activeDateLogLockScheduleId);
+  });
+
+  function setDateLogSourceSchedule(item){
+    dateLogSourceSchedule = item ? {
+      id: item.id, title: item.title || '데이트 일정', sourceWishId: item.sourceWishId || null,
+      date: item.date || '', time: item.time || '', endDate: item.endDate || '', endTime: item.endTime || '',
+      location: item.location || '',
+      lat: typeof item.lat === 'number' ? item.lat : null,
+      lng: typeof item.lng === 'number' ? item.lng : null,
+    } : null;
+    const row = document.getElementById('dateLogSourceScheduleRow');
+    const title = document.getElementById('dateLogSourceScheduleTitle');
+    row.classList.toggle('hidden', !dateLogSourceSchedule);
+    title.textContent = dateLogSourceSchedule ? dateLogSourceSchedule.title : '';
+  }
+
+  async function startDateLogFromSchedule(item){
+    if(!item) return;
+    let myLog;
+    try{
+      myLog = await getMyDateLogForSchedule(item.id);
+    }catch(e){
+      console.error('내 연결 기록 확인 실패', e);
+      alert('내가 남긴 기록이 있는지 확인하지 못했어.\n인터넷 연결을 확인하고 다시 눌러줘.');
+      return;
+    }
+    // 나는 이미 작성했으므로 내 기록으로 이동
+    if(myLog){
+      navigateToItem('datelog', myLog.id);
+      return;
+    }
+
+    showLoadingOverlay('확인 중이야...');
+    let lockResult;
+    try{
+      lockResult = await acquireDateLogDraftLock(item.id);
+    }catch(e){
+      hideLoadingOverlay();
+      console.error('잠금 확보 실패', e);
+      alert('작성을 시작하지 못했어. 인터넷 연결을 확인하고 다시 눌러줘.');
+      return;
+    }
+    hideLoadingOverlay();
+
+    if(!lockResult.acquired){
+      if(lockResult.existingId){
+        // 그 사이 내 기록이 이미 만들어졌음 (다른 기기 등) - 그리로 이동
+        navigateToItem('datelog', dateLogDocIdForSchedule(item.id, identity));
+        return;
+      }
+      alert('다른 기기에서 이미 이 기록을 작성 중이야.\n잠시 후 다시 시도해줘.');
+      return;
+    }
+
+    if(!activateTab('datelog')){
+      // 방금 확보한 잠금 정보를 넣어야 releaseDateLogDraftLock()이 정확히 해제할 수 있음
+      activeDateLogLockScheduleId = item.id;
+      activeDateLogLockToken = lockResult.lockToken;
+      await releaseDateLogDraftLock();
+      return;
+    }
+
+    resetDatelogForm();
+    setDateLogSourceSchedule(item);
+    activeDateLogLockScheduleId = item.id;
+    activeDateLogLockToken = lockResult.lockToken;
+    startDateLogLockHeartbeat(item.id);
+
+    document.getElementById('dateLogDate').value = item.date || localDateStr();
+    document.getElementById('dateLogLocation').value = item.location || '';
+    pendingDateLogGeo = (typeof item.lat === 'number' && typeof item.lng === 'number') ? { lat: item.lat, lng: item.lng } : null;
+
+    // 제목은 자동으로 채우되, 각자 자유롭게 고쳐 쓸 수 있음
+    document.getElementById('dateLogTitle').value = item.title || '';
+    document.getElementById('dateLogTime').value = item.time || '';
+    if(item.endDate){
+      document.getElementById('dateLogEndDate').value = item.endDate;
+      document.getElementById('dateLogEndTime').value = item.endTime || '';
+      setRangeToggleState('dateLogEndDateRow', 'dateLogRangeToggleBtn', true);
+    } else {
+      document.getElementById('dateLogEndDate').value = '';
+      document.getElementById('dateLogEndTime').value = '';
+      setRangeToggleState('dateLogEndDateRow', 'dateLogRangeToggleBtn', false);
+    }
+    dateLogSelectedParticipants = getDisplayParticipants(item).slice();
+    renderParticipantChips('dateLogParticipantRow', dateLogSelectedParticipants);
+  }
+
   function renderParticipantChips(containerId, selectedArr){
     const row = document.getElementById(containerId);
     row.innerHTML = ALL_NAMES.map(name => `
@@ -2822,6 +3279,12 @@ function renderLetters() {
     document.getElementById('dateLogTitle').value = item.title;
     document.getElementById('dateLogLocation').value = item.location || '';
     document.getElementById('dateLogLocationResults').classList.add('hidden');
+    // 연결된 일정이 있으면 표시만 복원 (이미 만들어진 기록을 고치는 거라 잠금은 새로 걸지 않음)
+    setDateLogSourceSchedule(item.sourceScheduleId ? {
+      id: item.sourceScheduleId,
+      title: item.sourceScheduleTitle || '데이트 일정',
+      sourceWishId: item.sourceWishId || null
+    } : null);
     const statusEl0 = document.getElementById('dateLogLocationStatus');
     if(typeof item.lat === 'number' && typeof item.lng === 'number'){
       pendingDateLogGeo = { lat: item.lat, lng: item.lng };
@@ -2834,7 +3297,7 @@ function renderLetters() {
     }
     document.getElementById('dateLogMemo').value = item.memo || '';
     if(document.getElementById('dateLogMemo')._autoGrowResize) document.getElementById('dateLogMemo')._autoGrowResize();
-    if(item.endDate && item.endDate !== item.date){
+    if(item.endDate){
       document.getElementById('dateLogEndDate').value = item.endDate;
       document.getElementById('dateLogEndTime').value = item.endTime || '';
       setRangeToggleState('dateLogEndDateRow', 'dateLogRangeToggleBtn', true);
@@ -2851,13 +3314,16 @@ function renderLetters() {
     document.getElementById('dateLogCancelBtn').classList.remove('hidden');
     document.getElementById('dateLogAddBtn').closest('.add-card').scrollIntoView({behavior:'smooth', block:'start'});
   }
-  function resetDatelogForm(){
+  function resetDatelogForm(skipLockRelease){
     editingDatelogId = null;
     document.getElementById('dateLogTitle').value='';
     document.getElementById('dateLogLocation').value='';
     document.getElementById('dateLogLocationStatus').classList.add('hidden');
     document.getElementById('dateLogLocationResults').classList.add('hidden');
     pendingDateLogGeo = null;
+    setDateLogSourceSchedule(null);
+    if(!skipLockRelease) releaseDateLogDraftLock();
+    else { activeDateLogLockScheduleId = null; activeDateLogLockToken = null; stopDateLogLockHeartbeat(); }
     document.getElementById('dateLogMemo').value='';
     if(document.getElementById('dateLogMemo')._autoGrowResize) document.getElementById('dateLogMemo')._autoGrowResize();
     document.getElementById('dateLogTime').value='';
@@ -2909,6 +3375,10 @@ function renderLetters() {
         resultsEl.classList.add('hidden');
         resultsEl.innerHTML = '';
         document.getElementById('dateLogLocation').value = '';
+        pendingDateLogGeo = null;
+        const statusEl = document.getElementById('dateLogLocationStatus');
+        statusEl.classList.add('hidden');
+        statusEl.textContent = '';
       });
       return;
     }
@@ -2922,6 +3392,10 @@ function renderLetters() {
       resultsEl.classList.add('hidden');
       resultsEl.innerHTML = '';
       document.getElementById('dateLogLocation').value = '';
+      pendingDateLogGeo = null;
+      const statusEl = document.getElementById('dateLogLocationStatus');
+      statusEl.classList.add('hidden');
+      statusEl.textContent = '';
     });
     resultsEl.querySelectorAll('.location-result-item[data-idx]').forEach(el=>{
       el.addEventListener('click', ()=>{
@@ -2937,8 +3411,83 @@ function renderLetters() {
       });
     });
   });
-  document.getElementById('dateLogCancelBtn').addEventListener('click', resetDatelogForm);
+  document.getElementById('dateLogCancelBtn').addEventListener('click', ()=> resetDatelogForm());
 // 1. 기록하기 / 수정 완료 버튼
+  async function saveNewDateLogForSchedule(scheduleId, data, pendingPhotos){
+    showLoadingOverlay('저장 중이야...');
+    let uploadedPhotos = [];
+    try{
+      uploadedPhotos = await uploadPhotos(pendingPhotos, (pct) => showLoadingOverlay(`저장 중이야... ${pct}%<br>사진 업로드 중이야`));
+      const docId = dateLogDocIdForSchedule(scheduleId, identity);
+      const recordRef = db.collection('datelog').doc(docId);
+      const lockRef = db.collection('datelogDraftLocks').doc(dateLogLockId(scheduleId));
+      const deviceId = getOrCreateDeviceId();
+      const myToken = activeDateLogLockToken;
+
+      const result = await db.runTransaction(async t => {
+        const recordSnap = await t.get(recordRef);
+        const lockSnap = await t.get(lockRef);
+        const lock = lockSnap.exists ? lockSnap.data() : null;
+        const ownsLock = lock && lock.owner === identity && lock.deviceId === deviceId && lock.lockToken === myToken;
+
+        if(recordSnap.exists){
+          // 이미 기록이 있어도, 그게 내 잠금이라면 남겨두지 않고 같이 정리함
+          if(ownsLock) t.delete(lockRef);
+          return 'exists';
+        }
+        if(!ownsLock) return 'lost';
+        t.set(recordRef, { ...data, photos: uploadedPhotos, author: identity, createdAt: Date.now() });
+        t.delete(lockRef);
+        return 'created';
+      });
+
+      if(result === 'exists'){
+        await deletePhotosFromStorage(uploadedPhotos);
+        alert('내 기록이 이미 저장되어 있어!\n기존 기록으로 이동할게.');
+        activeDateLogLockScheduleId = null; activeDateLogLockToken = null; stopDateLogLockHeartbeat();
+        resetDatelogForm(/*skipLockRelease=*/true);
+        navigateToItem('datelog', docId);
+        return false;
+      }
+      if(result === 'lost'){
+        await deletePhotosFromStorage(uploadedPhotos);
+        activeDateLogLockScheduleId = null; activeDateLogLockToken = null; stopDateLogLockHeartbeat();
+
+        let retryLock = null;
+        try{
+          retryLock = await acquireDateLogDraftLock(scheduleId);
+        }catch(e){
+          console.warn('작성 잠금 재확보 실패', e);
+        }
+
+        if(retryLock && retryLock.acquired){
+          activeDateLogLockScheduleId = scheduleId;
+          activeDateLogLockToken = retryLock.lockToken;
+          startDateLogLockHeartbeat(scheduleId);
+          alert('작성 잠금이 만료되어 새로 확보했어.\n작성 내용은 그대로야. 저장 버튼을 한 번 더 눌러줘.');
+          return false;
+        }
+        if(retryLock && retryLock.existingId){
+          alert('내 기록이 이미 저장되어 있어!\n기존 기록으로 이동할게.');
+          resetDatelogForm(/*skipLockRelease=*/true);
+          navigateToItem('datelog', retryLock.existingId);
+          return false;
+        }
+        alert('다른 기기에서 이 기록을 작성 중이야.\n작성 내용은 화면에 남겨뒀어. 다른 기기의 작업이 끝난 뒤 다시 시도해줘.');
+        return false;
+      }
+      // 저장 트랜잭션에서 이미 잠금 문서를 지웠으니, 여기서는 전역 상태와 하트비트만 정리(중복 삭제 시도 방지)
+      resetDatelogForm(/*skipLockRelease=*/true);
+      return true;
+    }catch(e){
+      console.error('일정 연결 기록 저장 실패', e);
+      if(uploadedPhotos.length > 0) await deletePhotosFromStorage(uploadedPhotos);
+      alert('기록을 저장하지 못했어.\n작성한 내용은 그대로 남겨뒀어.');
+      return false;
+    }finally{
+      hideLoadingOverlay();
+    }
+  }
   document.getElementById('dateLogAddBtn').addEventListener('click', async () => {
     const title = document.getElementById('dateLogTitle').value.trim();
     const date = document.getElementById('dateLogDate').value;
@@ -2957,24 +3506,35 @@ function renderLetters() {
         hideLoadingOverlay();
       }
     }
-    
-    // 이제 saveItem 하나로 끝!
+
+    const data = {
+      title,
+      date,
+      memo: document.getElementById('dateLogMemo').value.trim(),
+      location: location,
+      time: document.getElementById('dateLogTime').value || null,
+      endDate: document.getElementById('dateLogEndDate').value || null,
+      endTime: document.getElementById('dateLogEndTime').value || null,
+      lat: geo ? geo.lat : null,
+      lng: geo ? geo.lng : null,
+      participants: dateLogSelectedParticipants.slice(),
+      sourceScheduleId: dateLogSourceSchedule ? dateLogSourceSchedule.id : null,
+      sourceScheduleTitle: dateLogSourceSchedule ? dateLogSourceSchedule.title : null,
+      sourceWishId: dateLogSourceSchedule ? dateLogSourceSchedule.sourceWishId : null,
+    };
+
+    // 일정에 연결된 "새" 기록이면, 사람별 고정 문서 ID + 트랜잭션으로 중복을 막는
+    // 전용 저장 경로를 씀. 수정이거나 일정과 무관한 기록이면 기존 saveItem 그대로 사용
+    if(!editingDatelogId && dateLogSourceSchedule){
+      await saveNewDateLogForSchedule(dateLogSourceSchedule.id, data, pendingDateLogPhotos);
+      return;
+    }
+
     await saveItem(
       'datelog',
       !!editingDatelogId,
       editingDatelogId,
-      { 
-        title, 
-        date,
-        memo: document.getElementById('dateLogMemo').value.trim(),
-        location: location,
-        time: document.getElementById('dateLogTime').value || null,
-        endDate: document.getElementById('dateLogEndDate').value || null,
-        endTime: document.getElementById('dateLogEndTime').value || null,
-        lat: geo ? geo.lat : null,
-        lng: geo ? geo.lng : null,
-        participants: dateLogSelectedParticipants.slice()
-      },
+      data,
       pendingDateLogPhotos,
       resetDatelogForm
     );
@@ -2984,11 +3544,15 @@ function renderLetters() {
   document.getElementById('dateLogList').addEventListener('click', (e) => {
     const editBtn = e.target.closest('[data-edit-datelog]');
     const delBtn = e.target.closest('[data-del-datelog]');
+    const sourceScheduleBtn = e.target.closest('[data-open-source-schedule]');
+    const sourceWishBtn = e.target.closest('[data-open-source-wish]');
     const editId = editBtn && editBtn.dataset.editDatelog;
     const delId = delBtn && delBtn.dataset.delDatelog;
 
     if (editId) startEditDatelog(dateLogs.find(s => s.id === editId));
     else if (delId) deleteItem('datelog', delId, dateLogs.find(s => s.id === delId));
+    else if (sourceScheduleBtn) navigateToItem('schedule', sourceScheduleBtn.dataset.openSourceSchedule);
+    else if (sourceWishBtn) navigateToItem('wish', sourceWishBtn.dataset.openSourceWish);
   });
 
   // ---- 자유게시판 ----
@@ -4255,6 +4819,7 @@ function startWatchers(){
     });
     if(typeof clearOpenedArchivePhoto === 'function') clearOpenedArchivePhoto();
     if(typeof clearOpenedNotificationTarget === 'function') clearOpenedNotificationTarget();
+    if(typeof releaseDateLogDraftLock === 'function' && activeDateLogLockScheduleId) releaseDateLogDraftLock();
     stopDailyQuestionWatch();
     watchersStarted = false;
     visitWatchStarted = false;

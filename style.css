@@ -495,6 +495,32 @@
   }
   .date-plan-toggle.active{ background:var(--pink); color:var(--white); border-color:var(--pink); }
 
+  /* 위시→일정, 일정→기록 연결 표시 영역 */
+  .schedule-source-wish{
+    display:flex; align-items:center; justify-content:space-between; gap:8px;
+    background:var(--cream); border:1.5px solid #F0E4E9; border-radius:9px;
+    padding:9px 12px; margin-bottom:10px; font-size:13px;
+  }
+  .schedule-source-label{ color:var(--plum-soft); margin-right:6px; }
+  .schedule-source-wish strong{ color:var(--plum); }
+  .schedule-source-wish button{
+    flex-shrink:0; background:none; border:none; color:var(--plum-soft); font-size:12px;
+    text-decoration:underline; cursor:pointer; padding:0;
+  }
+  /* 일정 카드 - 기록을 남긴 사람 표시 */
+  .schedule-memory-people{ margin-top:8px; font-size:12px; color:var(--plum-soft); }
+  .schedule-memory-people .home-next-participants{ display:inline-flex; gap:4px; margin-left:6px; }
+  .schedule-memory-btn{
+    display:block; width:100%; text-align:center; margin-top:8px; padding:9px 0; border-radius:9px;
+    border:1.5px solid #F0E4E9; background:#FDFBF9; color:var(--plum-soft); font-size:13px;
+    cursor:pointer; font-family:'DungGeunMo',sans-serif;
+  }
+  .schedule-memory-btn.completed{ background:var(--pink); color:var(--white); border-color:var(--pink); }
+  .source-link-btn{
+    display:inline-block; margin-top:6px; background:none; border:1.5px solid #F0E4E9; border-radius:8px;
+    color:var(--plum-soft); font-size:12px; padding:5px 10px; cursor:pointer; font-family:'DungGeunMo',sans-serif;
+  }
+
   .list{display:flex;flex-direction:column;gap:10px;}
   /* 일정/데이트기록 탭은 마지막 카드가 하단 탭바랑 맞닿아 보여서 여백을 좀 더 줌 */
   #scheduleList, #pastScheduleSection, #dateLogList{ margin-bottom:24px; }
